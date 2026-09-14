@@ -60,3 +60,21 @@ export function MicIcon(props: IconProps) {
     </svg>
   );
 }
+
+export function SparkIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" {...props}>
+      <path d="M12 3c.45 3.1 2.6 5.25 5.6 5.6-3 .35-5.15 2.5-5.6 5.6-.45-3.1-2.6-5.25-5.6-5.6C9.4 8.25 11.55 6.1 12 3Z" />
+      <path d="M18.7 15.4c.22 1.15.98 1.9 2.1 2.1-1.12.22-1.88.97-2.1 2.1-.22-1.13-.98-1.88-2.1-2.1 1.12-.2 1.88-.95 2.1-2.1Z" />
+    </svg>
+  );
+}
+
+export function ArrowRightIcon(props: IconProps) {
+  return (
+    <svg {...baseProps} {...props}>
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  );
+}

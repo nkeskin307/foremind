@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppHeader } from "@/components/layout/app-header";
 import { MobileNavigation } from "@/components/layout/mobile-navigation";
@@ -20,13 +20,17 @@ export const metadata: Metadata = {
     "Your game starts before you swing. An AI-powered mental-game companion for golfers.",
 };
 
+export const viewport: Viewport = {
+  colorScheme: "dark",
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-cream font-sans text-charcoal">
+      <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
         <AppHeader />
         <main className="flex-1 pb-24 md:pb-12">{children}</main>
         <MobileNavigation />

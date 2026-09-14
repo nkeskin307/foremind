@@ -8,11 +8,11 @@ export function AppHeader() {
   const pathname = usePathname();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border bg-cream/95 backdrop-blur supports-[backdrop-filter]:bg-cream/85">
+    <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/85">
       <div className="mx-auto flex h-16 w-full max-w-5xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link
           href="/"
-          className="flex items-center gap-2 rounded-md text-lg font-semibold tracking-tight text-forest focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-offset-2 focus-visible:ring-offset-cream"
+          className="flex items-center gap-2 rounded-md text-lg font-semibold tracking-tight text-sage focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-light focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-full bg-forest" />
           ForeCalm
@@ -27,10 +27,10 @@ export function AppHeader() {
                 key={item.href}
                 href={item.href}
                 aria-current={isActive ? "page" : undefined}
-                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-offset-2 focus-visible:ring-offset-cream ${
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-light focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                   isActive
-                    ? "bg-forest text-cream"
-                    : "text-charcoal-muted hover:bg-sage-soft hover:text-charcoal"
+                    ? "bg-forest text-foreground"
+                    : "text-muted hover:bg-surface hover:text-foreground"
                 }`}
               >
                 {item.label}

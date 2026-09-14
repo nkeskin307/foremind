@@ -23,8 +23,8 @@ export function MobileNavigation() {
               key={item.href}
               href={item.href}
               aria-current={isActive ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-inset ${
-                isActive ? "text-forest" : "text-charcoal-muted"
+              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-light focus-visible:ring-inset ${
+                isActive ? "text-sage" : "text-muted"
               }`}
             >
               <Icon className="h-5 w-5" aria-hidden="true" />

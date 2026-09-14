@@ -13,23 +13,23 @@ const SUMMARY_ITEMS: Array<{ key: keyof Omit<MentalCheckIn, "note">; label: stri
 
 export function RoutinePreviewCard({ checkIn }: RoutinePreviewCardProps) {
   return (
-    <div className="mt-6 rounded-2xl border border-sage-soft bg-sage-soft/40 p-5 sm:p-6">
+    <div className="mt-2 rounded-2xl bg-sage-soft p-4 sm:p-5">
       <div className="flex flex-wrap gap-2">
         {SUMMARY_ITEMS.map(({ key, label }) => (
           <span
             key={key}
-            className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 text-xs font-medium text-charcoal-muted"
+            className="inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1 text-xs font-medium text-muted"
           >
             {label}
-            <span className="font-semibold text-forest">{checkIn[key]}</span>
+            <span className="font-semibold text-sage">{checkIn[key]}</span>
           </span>
         ))}
       </div>
 
-      <p className="mt-4 text-base font-medium text-charcoal">
+      <p className="mt-3 text-sm font-medium text-foreground">
         Your routine will be personalized here.
       </p>
-      <p className="mt-1 text-sm text-charcoal-muted">
+      <p className="mt-1 text-xs text-muted">
         {"Later, ForeCalm's AI coach will use your check-in and previous rounds to build your routine."}
       </p>
     </div>

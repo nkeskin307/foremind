@@ -1,32 +1,33 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf6ef;
-  --foreground: #24221e;
+  --background: #10140f;
+  --foreground: #f2eee4;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
 
-  /* Golf-inspired brand palette: deep forest green, soft cream, charcoal
-     text, and a single muted sage accent. Intentionally light throughout —
-     the product should never read as a dark, dashboard-style app. */
-  --color-forest: #1e3b2c;
-  --color-forest-dark: #14281d;
-  --color-cream: #faf6ef;
-  --color-surface: #ffffff;
-  --color-charcoal: #24221e;
-  --color-charcoal-muted: #6b675e;
-  --color-sage: #8ca58f;
-  --color-sage-soft: #e6ebe2;
-  --color-border: #e6e1d6;
+  /* Dark, golf-inspired performance palette: deep charcoal-green background,
+     forest green as the primary (button/selection) accent, and a lighter
+     muted sage reserved for accent text/icons directly on the dark
+     background, where forest green alone would not have enough contrast. */
+  --color-forest: #2f6b45;
+  --color-forest-light: #3f8058;
+  --color-sage: #9cb79e;
+  --color-surface: #171d18;
+  --color-sage-soft: #1a2420;
+  --color-muted: #a4aea2;
+  --color-border: #2b332c;
 
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image: radial-gradient(rgba(156, 183, 158, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
   color: var(--foreground);
 }

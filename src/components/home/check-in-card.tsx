@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { MentalSlider } from "./mental-slider";
+import { MentalScale } from "./mental-scale";
 import { RoutinePreviewCard } from "./routine-preview-card";
+import { ArrowRightIcon } from "@/components/icons";
 import type { MentalCheckIn } from "@/types/check-in";
 
 const DEFAULT_CHECK_IN: MentalCheckIn = {
-  confidence: 6,
-  focus: 7,
-  energy: 7,
-  nerves: 4,
+  confidence: 3,
+  focus: 4,
+  energy: 4,
+  nerves: 2,
   note: "",
 };
 
@@ -36,52 +37,51 @@ export function CheckInCard() {
   }
 
   return (
-    <div className="rounded-3xl border border-border bg-surface p-6 shadow-sm sm:p-8">
-      <h2 className="text-xl font-semibold text-charcoal">{"How's your head today?"}</h2>
+    <section>
+      <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
+        1-minute mental check-in
+      </h2>
+      <p className="mt-0.5 text-sm text-muted">Rate each area from 1 to 5.</p>
 
-      <form onSubmit={handleSubmit} noValidate className="mt-6 flex flex-col gap-6">
-        <div className="grid grid-cols-1 gap-x-6 gap-y-5 sm:grid-cols-2">
-          <MentalSlider
-            id="confidence"
+      <form onSubmit={handleSubmit} noValidate className="mt-4 flex flex-col gap-5">
+        <div className="flex flex-col gap-2.5">
+          <MentalScale
             label="Confidence"
             value={checkIn.confidence}
             onChange={(value) => updateField("confidence", value)}
           />
-          <MentalSlider
-            id="focus"
+          <MentalScale
             label="Focus"
             value={checkIn.focus}
             onChange={(value) => updateField("focus", value)}
           />
-          <MentalSlider
-            id="energy"
+          <MentalScale
             label="Energy"
             value={checkIn.energy}
             onChange={(value) => updateField("energy", value)}
           />
-          <MentalSlider
-            id="nerves"
+          <MentalScale
             label="Nerves"
             value={checkIn.nerves}
             onChange={(value) => updateField("nerves", value)}
           />
         </div>
 
-        <div className="flex flex-col gap-2">
-          <label htmlFor="pre-round-note" className="text-sm font-medium text-charcoal">
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="pre-round-note" className="text-sm font-medium text-foreground">
             {"What's on your mind before today's round?"}
           </label>
           <textarea
             id="pre-round-note"
-            rows={4}
+            rows={3}
             value={checkIn.note}
             onChange={(event) => updateField("note", event.target.value)}
             placeholder="I'm playing with better golfers today and I'm worried I'll slow them down…"
             aria-describedby={error ? "pre-round-note-error" : undefined}
-            className="w-full resize-none rounded-2xl border border-border bg-cream/60 px-4 py-3 text-sm text-charcoal placeholder:text-charcoal-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest"
+            className="w-full resize-none rounded-2xl border border-border bg-surface px-4 py-3 text-base text-foreground placeholder:text-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-light"
           />
           {error ? (
-            <p id="pre-round-note-error" role="alert" className="text-sm text-red-700">
+            <p id="pre-round-note-error" role="alert" className="text-sm text-red-400">
               {error}
             </p>
           ) : null}
@@ -89,13 +89,17 @@ export function CheckInCard() {
 
         <button
           type="submit"
-          className="inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3.5 text-sm font-semibold text-cream transition-colors hover:bg-forest-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:w-auto"
+          className="group inline-flex w-full items-center justify-center gap-2 rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-forest-light focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-auto"
         >
-          Build My Pre-Round Routine
+          Build My Routine
+          <ArrowRightIcon
+            className="h-4 w-4 transition-transform group-hover:translate-x-0.5"
+            aria-hidden="true"
+          />
         </button>
       </form>
 
       {submittedCheckIn ? <RoutinePreviewCard checkIn={submittedCheckIn} /> : null}
-    </div>
+    </section>
   );
 }
