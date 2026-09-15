@@ -1,0 +1,86 @@
+import type { PreRoundCheckIn } from "@/lib/play/round-data";
+
+export type ActiveRoundRecord = {
+  id: string;
+  course: string;
+  date: string;
+  holes: number;
+  currentHole: number;
+  scores: number[];
+  mentalNotes: (string | null)[];
+  preRound: PreRoundCheckIn;
+};
+
+const STORAGE_KEY = "foremind:active-round";
+
+function generateId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function createActiveRoundId(): string {
+  return generateId();
+}
+
+function isValidRecord(value: unknown): value is ActiveRoundRecord {
+  if (!value || typeof value !== "object") return false;
+  const raw = value as Record<string, unknown>;
+  return (
+    typeof raw.id === "string" &&
+    typeof raw.course === "string" &&
+    typeof raw.date === "string" &&
+    typeof raw.holes === "number" &&
+    typeof raw.currentHole === "number" &&
+    Array.isArray(raw.scores) &&
+    Array.isArray(raw.mentalNotes) &&
+    typeof raw.preRound === "object" &&
+    raw.preRound !== null
+  );
+}
+
+export function getActiveRoundSnapshot(): string {
+  if (typeof window === "undefined") return "";
+
+  try {
+    return window.localStorage.getItem(STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function parseActiveRoundSnapshot(raw: string): ActiveRoundRecord | null {
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw);
+    return isValidRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function loadActiveRound(): ActiveRoundRecord | null {
+  return parseActiveRoundSnapshot(getActiveRoundSnapshot());
+}
+
+export function saveActiveRound(record: ActiveRoundRecord): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(record));
+  } catch {
+    // localStorage may be unavailable (private mode, quota) — safe to ignore for this prototype.
+  }
+}
+
+export function clearActiveRound(): void {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // localStorage may be unavailable — safe to ignore for this prototype.
+  }
+}

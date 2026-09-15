@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { MentalCaddie } from "@/components/caddie/mental-caddie";
 import { AppHeader } from "@/components/layout/app-header";
-import { MobileNavigation } from "@/components/layout/mobile-navigation";
+import { PageTransition } from "@/components/layout/page-transition";
+import { CaddieContextProvider } from "@/lib/caddie/caddie-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,9 +17,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ForeCalm",
+  title: "Fore!Mind",
   description:
-    "Your game starts before you swing. An AI-powered mental-game companion for golfers.",
+    "Your personal mental caddie that learns what gets in your head and helps you manage it.",
 };
 
 export const viewport: Viewport = {
@@ -30,10 +32,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-background font-sans text-foreground">
-        <AppHeader />
-        <main className="flex-1 pb-24 md:pb-12">{children}</main>
-        <MobileNavigation />
+      <body className="flex min-h-full flex-col bg-background pb-10 font-sans text-foreground">
+        <CaddieContextProvider>
+          <AppHeader />
+          <PageTransition>{children}</PageTransition>
+          <MentalCaddie />
+        </CaddieContextProvider>
       </body>
     </html>
   );

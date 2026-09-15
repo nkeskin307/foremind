@@ -191,3 +191,45 @@ separate content column instead of a couple of small shortcuts.
 All existing interactions — check-in selection, textarea validation, the
 temporary routine preview, and both quick-action links — were preserved
 and re-verified after the refinement.
+
+## Prompt 2 — Round + Mental Reset Mode
+
+**Purpose:** Build ForeCalm's second major feature — an actual playable
+Round Mode — so the app can start collecting the data (scores plus mental
+resets) that later features will use to compare mental state against golf
+performance. Home was intentionally left untouched.
+
+**What was implemented:**
+
+- **Round setup**: `/round` shows a lightweight setup screen (optional
+  course name, 9 vs 18 holes, default 18) when there is no active round.
+- **Score entry**: a compact hole navigator (1…N, current hole and scored
+  holes visually distinguished beyond color alone) plus a minus/value/plus
+  stroke control. A hole's score stays unset until the golfer first taps
+  "+", which initializes it to 4; strokes are then clamped to 1–15 and
+  saved immediately. Previous/Next Hole buttons are disabled at the
+  round's edges.
+- **Mental reset**: a prominent "RESET" button opens a focused dialog
+  ("What's affecting you?") with six one-tap triggers (Bad shot,
+  Frustrated, Nervous, Rushed, Intimidated, Overthinking). Each trigger
+  shows a hand-written preset response (no AI call yet), logs a
+  `RoundReset` against the current hole and timestamp exactly once per
+  tap, and "Back to My Round" returns to the same hole. An unobtrusive
+  "Resets this round: X" control expands to a hole/trigger list.
+- **Finish Round**: always confirms before finishing (via a dialog), with
+  a specific warning if any holes are unscored ("Finish anyway?" /
+  "Keep Playing"). Confirming stamps `completedAt`, moves the round from
+  active to completed storage, and shows a simple "Round saved." summary
+  (course, total strokes, holes scored, resets) with a link back to Home.
+- **Persistence**: a new `Round` type (id, courseName, holeCount,
+  startedAt, completedAt, scores, resets, with a `ResetTrigger` union and
+  `RoundReset`/`HoleScore` types) plus small localStorage utilities
+  (`forecalm_active_round`, `forecalm_completed_rounds`) that validate
+  parsed data before trusting it. Refreshing mid-round, or revisiting
+  `/round` later, resumes the active round at its first unscored hole
+  (or the last hole if it's fully scored) rather than restarting setup.
+  "⛳ Play Now" on Home is unchanged and now lands on whichever screen is
+  appropriate (setup or the resumed round).
+
+No AI coach, voice, Insights dashboard, or Post-Round Reflection were
+built — those remain future prompts.

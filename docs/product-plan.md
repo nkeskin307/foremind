@@ -47,8 +47,9 @@ swing.
 
 1. **AI Pre-Round Routine** — Generates a personalized mental warm-up from
    the golfer's check-in and history.
-2. **Round + Reset Mode** — In-round check-ins and a quick "reset" flow for
-   recovering after a bad shot.
+2. **Round + Reset Mode** (implemented) — In-round score entry and a quick
+   "reset" flow for recovering after a bad shot, so ForeCalm can later
+   compare mental state against golf performance.
 3. **Voice AI Mental Coach** — A conversational voice coach for pressure,
    nerves, and frustration in the moment.
 4. **Post-Round Reflection** — A short reflection flow capturing how the
@@ -58,6 +59,8 @@ swing.
 
 ## Current status
 
-This first pass establishes the project foundation (navigation, visual
-direction, folder structure, core types) and fully implements the Home
-experience only. See `docs/prompt-log.md` for what was built and why.
+The project foundation (navigation, visual direction, folder structure,
+core types) and the Home experience are implemented. Round + Reset Mode is
+now also implemented: round setup, hole-by-hole score entry, mental
+resets with preset interventions, and local persistence of active and
+completed rounds. See `docs/prompt-log.md` for what was built and why.

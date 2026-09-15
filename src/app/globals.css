@@ -21,6 +21,12 @@
   --color-muted: #a4aea2;
   --color-border: #2b332c;
 
+  /* A brighter, more saturated green reserved for the golf-flag motifs —
+     distinct from the muted forest/sage palette used everywhere else, so
+     these decorative accents can read as a soft neon glow without pulling
+     that brightness into any functional UI (text, buttons, borders). */
+  --color-neon-green: #43e97b;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -30,4 +36,160 @@ body {
   background-image: radial-gradient(rgba(156, 183, 158, 0.05) 1px, transparent 1px);
   background-size: 24px 24px;
   color: var(--foreground);
+}
+
+/* Calm, premium motion primitives — a page-level fade-and-rise (with a
+   small stagger between headings and the content that follows), a plain
+   fade for content that quietly appears, and a slightly springier pop-in
+   for modals/panels. Everything here is opt-in via class name so the
+   default is stillness. */
+@keyframes fm-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fm-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fm-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.motion-page {
+  animation: fm-fade-up 380ms ease-out both;
+}
+
+.motion-heading {
+  animation: fm-fade-up 350ms ease-out both;
+}
+
+.motion-body {
+  animation: fm-fade-up 400ms ease-out 90ms both;
+}
+
+.motion-fade {
+  animation: fm-fade-in 220ms ease-out both;
+}
+
+.motion-modal {
+  animation: fm-pop-in 260ms ease-out both;
+}
+
+/* A third, later stagger tier — for a three-step reveal (e.g. homepage
+   title → tagline → CTA) where .motion-heading/.motion-body aren't enough
+   steps, and for dashboard sections that should trail in slightly behind
+   the rest of the page. */
+.motion-body-late {
+  animation: fm-fade-up 420ms ease-out 180ms both;
+}
+
+/* A small, consistent press-down on every button in the product — covers
+   primary CTAs, rating scales, hole numbers, and round-card toggles alike
+   without needing a bespoke class on each one. */
+button:not(:disabled) {
+  transition: transform 150ms ease-out;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* Every primary (forest-green) button or link gets a consistent premium
+   hover: a small lift plus a soft green glow, layered on top of whichever
+   color-swap hover utility it already has. */
+.bg-forest {
+  transition:
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out,
+    background-color 200ms ease-out;
+}
+
+a.bg-forest:hover,
+button.bg-forest:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 28px -10px rgba(63, 128, 88, 0.55);
+}
+
+/* Opt-in soft lift for card-style surfaces (round cards, stat tiles, the
+   Current Mental Focus card) — a quieter cousin of the button hover above. */
+.card-hover {
+  transition:
+    transform 200ms ease-out,
+    border-color 200ms ease-out,
+    box-shadow 200ms ease-out;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-forest);
+  box-shadow: 0 12px 28px -14px rgba(0, 0, 0, 0.6);
+}
+
+/* A quiet, always-on halo on the Ask My Caddie trigger so it reads as the
+   product's signature action without looping or pulsing. */
+.caddie-glow {
+  box-shadow:
+    0 0 0 1px rgba(156, 183, 158, 0.15),
+    0 8px 28px -10px rgba(63, 128, 88, 0.5);
+}
+
+/* Restrained golf motifs, applied sparingly as faint background texture —
+   never as decoration loud enough to compete with content. */
+.motif-dimples {
+  background-image: radial-gradient(circle, rgba(156, 183, 158, 0.16) 1px, transparent 1.5px);
+  background-size: 11px 11px;
+}
+
+.motif-scorecard-lines {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgba(156, 183, 158, 0.07) 0px,
+    rgba(156, 183, 158, 0.07) 1px,
+    transparent 1px,
+    transparent 27px
+  );
+}
+
+.hero-glow {
+  background: radial-gradient(closest-side, rgba(63, 128, 88, 0.3), transparent 70%);
+  filter: blur(8px);
+}
+
+/* The flagstick motif's premium-neon treatment: a bright green stroke plus
+   two static drop-shadow layers (a tight, brighter glow and a wider, much
+   softer one) for depth — no animation, so it never flashes or pulses. */
+.motif-flag-glow {
+  color: var(--color-neon-green);
+  filter:
+    drop-shadow(0 0 8px rgba(67, 233, 123, 0.55))
+    drop-shadow(0 0 34px rgba(67, 233, 123, 0.22));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
