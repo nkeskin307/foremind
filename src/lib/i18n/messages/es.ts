@@ -301,6 +301,20 @@ export const es: Messages = {
     recoveryNotEnough: (min) =>
       `Aún no hay datos suficientes — cada lado necesita al menos ${min} casos para comparar.`,
   },
+  photo: {
+    addPhoto: "Añadir una foto (opcional)",
+    changePhoto: "Cambiar foto",
+    hint: "Una foto para recordar esta vuelta. Se queda en este dispositivo.",
+    processing: "Preparando la foto…",
+    readError: "No se pudo leer esa foto. Prueba con otra — JPEG o PNG funcionan mejor.",
+    saveFailed:
+      "Tu vuelta se guardó, pero la foto no se pudo guardar en este dispositivo (el almacenamiento puede estar lleno o la navegación privada activada).",
+    remove: "Quitar foto",
+    removeConfirm: "¿Quitar esta foto?",
+    removeYes: "Quitar",
+    label: "Foto",
+    alt: (course) => `Foto de tu vuelta en ${course}`,
+  },
   caddieLog: {
     title: "Registro del caddie",
     subtitle: "Todas tus conversaciones con tu caddie mental.",

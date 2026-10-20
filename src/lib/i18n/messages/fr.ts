@@ -305,6 +305,20 @@ export const fr: Messages = {
     recoveryNotEnough: (min) =>
       `Pas encore assez de données — il faut au moins ${min} cas de chaque côté pour comparer.`,
   },
+  photo: {
+    addPhoto: "Ajouter une photo (facultatif)",
+    changePhoto: "Changer la photo",
+    hint: "Une photo pour te souvenir de cette partie. Elle reste sur cet appareil.",
+    processing: "Préparation de la photo…",
+    readError: "Impossible de lire cette photo. Essaie-en une autre — JPEG ou PNG de préférence.",
+    saveFailed:
+      "Ta partie est enregistrée, mais la photo n'a pas pu être stockée sur cet appareil (stockage plein ou navigation privée).",
+    remove: "Supprimer la photo",
+    removeConfirm: "Supprimer cette photo ?",
+    removeYes: "Supprimer",
+    label: "Photo",
+    alt: (course) => `Photo de ta partie à ${course}`,
+  },
   caddieLog: {
     title: "Journal du caddie",
     subtitle: "Toutes tes conversations avec ton caddie mental.",

@@ -15,6 +15,7 @@ import {
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { stateLabel } from "@/lib/i18n";
 import { formatDate } from "@/lib/i18n/format";
+import { RoundPhoto } from "@/components/photos/round-photo";
 import {
   clearActiveRound,
   getActiveRoundSnapshot,
@@ -77,6 +78,12 @@ function LastTimeCard({ history }: { history: CourseHistory }) {
       ) : (
         <p className="mt-2 text-xs text-muted">{t.setup.noReflection}</p>
       )}
+      <RoundPhoto
+        roundId={last.id}
+        alt={t.photo.alt(history.displayName)}
+        imageClassName="h-32 w-full"
+        className="mt-3"
+      />
     </div>
   );
 }

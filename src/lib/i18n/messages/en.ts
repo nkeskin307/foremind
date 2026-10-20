@@ -317,6 +317,20 @@ export const en = {
     recoveryNotEnough: (min: number) =>
       `Not enough data yet — each side needs at least ${min} cases to compare.`,
   },
+  photo: {
+    addPhoto: "Add a photo (optional)",
+    changePhoto: "Change photo",
+    hint: "One photo to remember this round. It stays on this device.",
+    processing: "Preparing photo…",
+    readError: "Couldn't read that photo. Try another one — JPEG or PNG works best.",
+    saveFailed:
+      "Your round was saved, but the photo couldn't be stored on this device (storage may be full, or private browsing is on).",
+    remove: "Remove photo",
+    removeConfirm: "Remove this photo?",
+    removeYes: "Remove",
+    label: "Photo",
+    alt: (course: string) => `Photo from your round at ${course}`,
+  },
   caddieLog: {
     title: "Caddie Log",
     subtitle: "Every conversation you've had with your Mental Caddie.",

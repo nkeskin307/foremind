@@ -303,6 +303,20 @@ export const it: Messages = {
     recoveryNotEnough: (min) =>
       `Dati non ancora sufficienti — servono almeno ${min} casi per lato per confrontare.`,
   },
+  photo: {
+    addPhoto: "Aggiungi una foto (facoltativa)",
+    changePhoto: "Cambia foto",
+    hint: "Una foto per ricordare questo giro. Resta su questo dispositivo.",
+    processing: "Preparazione della foto…",
+    readError: "Impossibile leggere questa foto. Provane un'altra — JPEG o PNG funzionano meglio.",
+    saveFailed:
+      "Il giro è stato salvato, ma la foto non è stata memorizzata su questo dispositivo (spazio pieno o navigazione privata attiva).",
+    remove: "Rimuovi foto",
+    removeConfirm: "Rimuovere questa foto?",
+    removeYes: "Rimuovi",
+    label: "Foto",
+    alt: (course) => `Foto del tuo giro a ${course}`,
+  },
   caddieLog: {
     title: "Registro del caddie",
     subtitle: "Tutte le conversazioni con il tuo caddie mentale.",

@@ -305,6 +305,20 @@ export const de: Messages = {
     recoveryNotEnough: (min) =>
       `Noch nicht genug Daten — jede Seite braucht mindestens ${min} Fälle zum Vergleich.`,
   },
+  photo: {
+    addPhoto: "Foto hinzufügen (optional)",
+    changePhoto: "Foto ändern",
+    hint: "Ein Foto zur Erinnerung an diese Runde. Es bleibt auf diesem Gerät.",
+    processing: "Foto wird vorbereitet…",
+    readError: "Dieses Foto konnte nicht gelesen werden. Versuch ein anderes — JPEG oder PNG funktionieren am besten.",
+    saveFailed:
+      "Deine Runde wurde gespeichert, aber das Foto konnte auf diesem Gerät nicht abgelegt werden (Speicher voll oder privates Surfen aktiv).",
+    remove: "Foto entfernen",
+    removeConfirm: "Dieses Foto entfernen?",
+    removeYes: "Entfernen",
+    label: "Foto",
+    alt: (course) => `Foto von deiner Runde auf ${course}`,
+  },
   caddieLog: {
     title: "Caddie-Verlauf",
     subtitle: "Alle Gespräche mit deinem Mental-Caddie.",

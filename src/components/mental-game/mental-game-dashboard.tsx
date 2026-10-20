@@ -20,6 +20,8 @@ import {
   type RecoveryStats,
 } from "@/lib/play/proactive-caddie";
 import { useI18n } from "@/lib/i18n/use-i18n";
+import { useRoundPhotoUrl } from "@/lib/photos/photo-store";
+import { RoundPhoto } from "@/components/photos/round-photo";
 import { allNoDataPhrases, stateLabel, type Messages } from "@/lib/i18n";
 import { formatAverageToPar, formatDate, formatDateTime, formatDecimal } from "@/lib/i18n/format";
 import {
@@ -328,6 +330,8 @@ function CourseCard({ history }: { history: CourseHistory }) {
   const roundCount = history.rounds.length;
   const [latest, previous] = history.rounds;
   const has18 = latest.holes === 18 || previous?.holes === 18;
+  const latestPhoto = useRoundPhotoUrl(latest.id);
+  const previousPhoto = useRoundPhotoUrl(previous?.id ?? null);
 
   return (
     <div className="card-hover rounded-2xl border border-border bg-surface px-4 py-3">
@@ -397,6 +401,22 @@ function CourseCard({ history }: { history: CourseHistory }) {
               latest={latest.whatToRemember || t.dashboard.noReflectionSaved}
               previous={previous.whatToRemember || t.dashboard.noReflectionSaved}
             />
+            {(latestPhoto || previousPhoto) && (
+              <>
+                <p className="col-span-2 mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                  {t.photo.label}
+                </p>
+                {[latest, previous].map((round) => (
+                  <div key={round.id}>
+                    <RoundPhoto
+                      roundId={round.id}
+                      alt={t.photo.alt(history.displayName)}
+                      imageClassName="h-20 w-full"
+                    />
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
       )}
@@ -486,7 +506,15 @@ function RoundCard({
         aria-expanded={isExpanded}
         className="flex w-full items-center justify-between gap-4 text-left"
       >
-        <div>
+        <div className="flex min-w-0 items-center gap-3">
+          <RoundPhoto
+            roundId={round.id}
+            alt={t.photo.alt(round.course.trim() || t.dashboard.unnamedCourse)}
+            imageClassName="h-10 w-10"
+            removable={false}
+            className="shrink-0"
+          />
+          <div className="min-w-0">
           <p className="text-sm font-medium text-foreground">
             {round.course.trim() || t.dashboard.unnamedCourse}
           </p>
@@ -494,6 +522,7 @@ function RoundCard({
             {formatDate(round.date, lang, t.common.unknownDate)} · {t.common.holesCount(round.holes)}
             {commonState ? ` · ${stateLabel(t, commonState)}` : ""}
           </p>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <div className="text-right">
@@ -529,6 +558,13 @@ function RoundCard({
       >
         <div className="overflow-hidden">
           <div aria-hidden={!isExpanded} className="mt-4 space-y-4 border-t border-border pt-4">
+            {isExpanded && (
+              <RoundPhoto
+                roundId={round.id}
+                alt={t.photo.alt(round.course.trim() || t.dashboard.unnamedCourse)}
+                imageClassName="h-40 w-full"
+              />
+            )}
             {round.analysis ? (
               <>
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage">

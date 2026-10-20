@@ -297,6 +297,20 @@ export const tr: Messages = {
     recoveryNotEnough: (min) =>
       `Henüz yeterli veri yok — karşılaştırmak için her iki tarafta en az ${min} örnek gerekiyor.`,
   },
+  photo: {
+    addPhoto: "Fotoğraf ekle (isteğe bağlı)",
+    changePhoto: "Fotoğrafı değiştir",
+    hint: "Bu turu hatırlatacak bir fotoğraf. Sadece bu cihazda kalır.",
+    processing: "Fotoğraf hazırlanıyor…",
+    readError: "Bu fotoğraf okunamadı. Başka bir tane dene — JPEG ya da PNG en iyisi.",
+    saveFailed:
+      "Turun kaydedildi ama fotoğraf bu cihaza kaydedilemedi (depolama dolu olabilir ya da gizli gezinme açık olabilir).",
+    remove: "Fotoğrafı kaldır",
+    removeConfirm: "Bu fotoğraf kaldırılsın mı?",
+    removeYes: "Kaldır",
+    label: "Fotoğraf",
+    alt: (course) => `${course} turundan fotoğraf`,
+  },
   caddieLog: {
     title: "Caddie kaydı",
     subtitle: "Zihinsel caddie'nle yaptığın tüm konuşmalar.",
