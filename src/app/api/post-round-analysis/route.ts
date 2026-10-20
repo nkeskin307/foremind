@@ -51,9 +51,14 @@ type AnalysisResult = AnalysisFields & {
 type ParsedRound = {
   course: string;
   holes: number;
-  scores: number[];
+  /** null = hole not scored. */
+  scores: (number | null)[];
+  pars: number[];
   mentalNotes: (string | null)[];
+  /** Sum of scored holes only. */
   total: number;
+  totalPar: number;
+  holesScored: number;
   preRound: {
     focus: number | null;
     energy: number | null;
@@ -89,14 +94,36 @@ function parseRoundForAnalysis(value: unknown): ParsedRound | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
 
-  const scores = Array.isArray(raw.scores)
-    ? raw.scores.filter((n): n is number => typeof n === "number")
-    : [];
-  if (scores.length === 0) return null;
+  if (!Array.isArray(raw.scores) || raw.scores.length === 0) return null;
 
-  const mentalNotes = Array.isArray(raw.mentalNotes)
-    ? raw.mentalNotes.filter((n): n is string | null => typeof n === "string" || n === null)
-    : [];
+  // Keep hole positions intact: an unscored hole stays null (never dropped,
+  // which would shift every later hole's number).
+  const holes =
+    typeof raw.holes === "number" && Number.isInteger(raw.holes) && raw.holes > 0
+      ? raw.holes
+      : raw.scores.length;
+  const rawScores = raw.scores as unknown[];
+  const rawPars = Array.isArray(raw.pars) ? (raw.pars as unknown[]) : [];
+  const rawNotes = Array.isArray(raw.mentalNotes) ? (raw.mentalNotes as unknown[]) : [];
+  const scores = Array.from({ length: holes }, (_, index) => toNumberOrNull(rawScores[index]));
+  const pars = Array.from({ length: holes }, (_, index) => {
+    const par = toNumberOrNull(rawPars[index]);
+    return par !== null && par >= 3 && par <= 6 ? par : 4;
+  });
+  const mentalNotes = Array.from({ length: holes }, (_, index) => {
+    const note = rawNotes[index];
+    return typeof note === "string" && note ? note : null;
+  });
+
+  let total = 0;
+  let totalPar = 0;
+  let holesScored = 0;
+  scores.forEach((score, index) => {
+    if (score === null) return;
+    total += score;
+    totalPar += pars[index];
+    holesScored += 1;
+  });
 
   const preRoundRaw =
     raw.preRound && typeof raw.preRound === "object"
@@ -109,13 +136,13 @@ function parseRoundForAnalysis(value: unknown): ParsedRound | null {
 
   return {
     course: typeof raw.course === "string" ? raw.course.trim() : "",
-    holes: typeof raw.holes === "number" ? raw.holes : scores.length,
+    holes,
     scores,
+    pars,
     mentalNotes,
-    total:
-      typeof raw.total === "number"
-        ? raw.total
-        : scores.reduce((sum, score) => sum + score, 0),
+    total,
+    totalPar,
+    holesScored,
     preRound: {
       focus: toNumberOrNull(preRoundRaw.focus),
       energy: toNumberOrNull(preRoundRaw.energy),
@@ -157,11 +184,32 @@ function buildAnalysisPrompt(round: ParsedRound): string {
   lines.push("DURING THE ROUND:");
   lines.push(`- Course: ${round.course || "Not recorded"}`);
   lines.push(`- Holes: ${round.holes}`);
-  lines.push(`- Total score: ${round.total}`);
+  if (round.holesScored > 0) {
+    const toPar = round.total - round.totalPar;
+    lines.push(
+      `- Total score: ${round.total} across ${round.holesScored} of ${round.holes} scored holes (${
+        toPar === 0 ? "even par" : toPar > 0 ? `+${toPar}` : `${toPar}`
+      } vs par on those holes)`,
+    );
+  } else {
+    lines.push("- No hole scores were entered.");
+  }
+  if (round.holesScored < round.holes) {
+    lines.push(
+      "- Holes marked \"not scored\" have no score entered. Do not treat them as played holes or guess their scores.",
+    );
+  }
   lines.push("- Hole-by-hole:");
   round.scores.forEach((score, index) => {
     const state = round.mentalNotes[index];
-    lines.push(`  Hole ${index + 1}: score ${score}${state ? `, mental state logged: ${state}` : ""}`);
+    const par = round.pars[index];
+    const scoreText =
+      score === null
+        ? "not scored"
+        : `score ${score} (${score === par ? "even" : score > par ? `+${score - par}` : `${score - par}`})`;
+    lines.push(
+      `  Hole ${index + 1} (par ${par}): ${scoreText}${state ? `, mental state logged: ${state}` : ""}`,
+    );
   });
 
   lines.push("");

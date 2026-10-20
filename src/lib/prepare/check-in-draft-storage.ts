@@ -18,17 +18,29 @@ function isCheckInDraft(value: unknown): value is CheckInDraft {
   );
 }
 
-export function loadCheckInDraft(): CheckInDraft | null {
-  if (typeof window === "undefined") return null;
+export function getCheckInDraftSnapshot(): string {
+  if (typeof window === "undefined") return "";
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
+    return window.localStorage.getItem(STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function parseCheckInDraftSnapshot(raw: string): CheckInDraft | null {
+  if (!raw) return null;
+
+  try {
     const parsed = JSON.parse(raw);
     return isCheckInDraft(parsed) ? parsed : null;
   } catch {
     return null;
   }
+}
+
+export function loadCheckInDraft(): CheckInDraft | null {
+  return parseCheckInDraftSnapshot(getCheckInDraftSnapshot());
 }
 
 export function saveCheckInDraft(draft: CheckInDraft): void {

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type ComponentType,
+} from "react";
 import { useRouter } from "next/navigation";
 import { MicIcon } from "@/components/icons/mic-icon";
 import { TargetIcon } from "@/components/icons/target-icon";
@@ -11,7 +18,18 @@ import { useSpeechRecognition } from "@/lib/speech/use-speech-recognition";
 import type { CheckInField, CheckInRatings } from "@/lib/prepare/generate-routine";
 import { useCaddieContext } from "@/lib/caddie/caddie-context";
 import { checkInToQueryString, type CheckInQueryData } from "@/lib/prepare/check-in-params";
-import { loadCheckInDraft, saveCheckInDraft } from "@/lib/prepare/check-in-draft-storage";
+import {
+  clearCheckInDraft,
+  getCheckInDraftSnapshot,
+  parseCheckInDraftSnapshot,
+  saveCheckInDraft,
+  type CheckInDraft,
+} from "@/lib/prepare/check-in-draft-storage";
+import {
+  getLatestCheckInSnapshot,
+  parseLatestCheckInSnapshot,
+  saveLatestCheckIn,
+} from "@/lib/prepare/latest-check-in-storage";
 
 const RATING_FIELDS: {
   key: CheckInField;
@@ -25,29 +43,73 @@ const RATING_FIELDS: {
 
 const SCALE = [1, 2, 3, 4, 5];
 
+function subscribeToNothing() {
+  return () => {};
+}
+
+function getServerEmptySnapshot() {
+  return "";
+}
+
 export function PreRoundCheckIn({
   initialCheckIn,
 }: {
   initialCheckIn: CheckInQueryData;
 }) {
   const router = useRouter();
-  // A locally-saved draft (see check-in-draft-storage) takes priority over
-  // the URL's query params — it's what makes Back from /routine show the
-  // exact same answers, since it survives regardless of how the user
-  // navigated here. The URL values remain a fallback for a fresh/shared link.
-  const [ratings, setRatings] = useState<CheckInRatings>(() => {
-    const draft = loadCheckInDraft();
-    return {
-      focus: draft?.focus ?? initialCheckIn.focus,
-      energy: draft?.energy ?? initialCheckIn.energy,
-      confidence: draft?.confidence ?? initialCheckIn.confidence,
-    };
-  });
-  const [notes, setNotes] = useState(() => loadCheckInDraft()?.note ?? initialCheckIn.note);
 
-  const handleTranscript = useCallback((transcript: string) => {
-    setNotes((prev) => (prev ? `${prev} ${transcript}` : transcript));
-  }, []);
+  // localStorage is read through useSyncExternalStore so the server render
+  // and the first client (hydration) render both see "" — the saved values
+  // appear right after mount, with no hydration mismatch.
+  const rawDraft = useSyncExternalStore(
+    subscribeToNothing,
+    getCheckInDraftSnapshot,
+    getServerEmptySnapshot,
+  );
+  const rawLatestCheckIn = useSyncExternalStore(
+    subscribeToNothing,
+    getLatestCheckInSnapshot,
+    getServerEmptySnapshot,
+  );
+
+  // Priority: an in-progress draft, then a submitted check-in that hasn't
+  // started a round yet (what makes Back from /routine show the same
+  // answers now that the draft is cleared on submit), then the URL.
+  const savedValues = useMemo<CheckInDraft>(() => {
+    const draft = parseCheckInDraftSnapshot(rawDraft);
+    const latest = parseLatestCheckInSnapshot(rawLatestCheckIn);
+    const source = draft ?? (latest && !latest.handled ? latest : null);
+    return {
+      focus: source?.focus ?? initialCheckIn.focus,
+      energy: source?.energy ?? initialCheckIn.energy,
+      confidence: source?.confidence ?? initialCheckIn.confidence,
+      note: source?.note ?? initialCheckIn.note,
+    };
+  }, [rawDraft, rawLatestCheckIn, initialCheckIn]);
+
+  // null until the golfer changes something; until then the saved values show.
+  const [edits, setEdits] = useState<CheckInDraft | null>(null);
+  const current = edits ?? savedValues;
+  const notes = current.note;
+  const ratings = useMemo<CheckInRatings>(
+    () => ({ focus: current.focus, energy: current.energy, confidence: current.confidence }),
+    [current],
+  );
+
+  const setNotes = useCallback(
+    (note: string) => setEdits((prev) => ({ ...(prev ?? savedValues), note })),
+    [savedValues],
+  );
+
+  const handleTranscript = useCallback(
+    (transcript: string) => {
+      setEdits((prev) => {
+        const base = prev ?? savedValues;
+        return { ...base, note: base.note ? `${base.note} ${transcript}` : transcript };
+      });
+    },
+    [savedValues],
+  );
 
   const { supported, isListening, start, stop } =
     useSpeechRecognition(handleTranscript);
@@ -67,17 +129,14 @@ export function PreRoundCheckIn({
     return () => setPreRoundContext(null);
   }, [setPreRoundContext]);
 
+  // Only persist once the golfer has actually changed something, so simply
+  // opening the page never overwrites a saved draft.
   useEffect(() => {
-    saveCheckInDraft({
-      focus: ratings.focus,
-      energy: ratings.energy,
-      confidence: ratings.confidence,
-      note: notes,
-    });
-  }, [ratings, notes]);
+    if (edits) saveCheckInDraft(edits);
+  }, [edits]);
 
   function setRating(field: CheckInField, value: number) {
-    setRatings((prev) => ({ ...prev, [field]: value }));
+    setEdits((prev) => ({ ...(prev ?? savedValues), [field]: value }));
   }
 
   const isValid =
@@ -89,12 +148,18 @@ export function PreRoundCheckIn({
   function handleBuildRoutine() {
     if (!isValid) return;
 
-    const query = checkInToQueryString({
+    const submitted = {
       focus: ratings.focus,
       energy: ratings.energy,
       confidence: ratings.confidence,
       note: notes.trim(),
-    });
+    };
+    const query = checkInToQueryString(submitted);
+
+    // The submitted check-in becomes the "latest" one (used by /play and
+    // Restart Round); the draft is done and is cleared.
+    saveLatestCheckIn(submitted);
+    clearCheckInDraft();
 
     router.push(`/routine?${query}`);
   }

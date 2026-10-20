@@ -20,17 +20,29 @@ function isReflectionDraft(value: unknown): value is ReflectionDraft {
   );
 }
 
-export function loadReflectionDraft(roundId: string): ReflectionDraft | null {
-  if (typeof window === "undefined") return null;
+export function getReflectionDraftSnapshot(roundId: string): string {
+  if (typeof window === "undefined") return "";
 
   try {
-    const raw = window.localStorage.getItem(draftKey(roundId));
-    if (!raw) return null;
+    return window.localStorage.getItem(draftKey(roundId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function parseReflectionDraftSnapshot(raw: string): ReflectionDraft | null {
+  if (!raw) return null;
+
+  try {
     const parsed = JSON.parse(raw);
     return isReflectionDraft(parsed) ? parsed : null;
   } catch {
     return null;
   }
+}
+
+export function loadReflectionDraft(roundId: string): ReflectionDraft | null {
+  return parseReflectionDraftSnapshot(getReflectionDraftSnapshot(roundId));
 }
 
 export function saveReflectionDraft(roundId: string, draft: ReflectionDraft): void {

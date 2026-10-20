@@ -12,6 +12,7 @@ import {
   type CompletedRound,
   type PostRoundAnalysis,
 } from "@/lib/mental-game/completed-rounds";
+import { formatToPar, summarizeScores } from "@/lib/play/round-data";
 import {
   getCaddieLogSnapshot,
   parseCaddieLogSnapshot,
@@ -295,6 +296,7 @@ function RoundCard({
   onToggle: () => void;
 }) {
   const commonState = mostCommonStateInRound(round);
+  const scoreSummary = summarizeScores(round.scores, round.pars);
   const hasReflection = Boolean(
     round.reflection.whatWorked || round.reflection.whatGotInHead || round.reflection.whatToRemember,
   );
@@ -317,7 +319,19 @@ function RoundCard({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <p className="text-sm font-semibold text-foreground">{round.total}</p>
+          <div className="text-right">
+            <p className="text-sm font-semibold text-foreground">
+              {scoreSummary.holesScored > 0 ? scoreSummary.total : "—"}
+            </p>
+            {scoreSummary.holesScored > 0 && (
+              <p className="text-xs text-muted">
+                {formatToPar(scoreSummary.toPar)}
+                {scoreSummary.holesScored < round.holes
+                  ? ` · ${scoreSummary.holesScored}/${round.holes} holes`
+                  : ""}
+              </p>
+            )}
+          </div>
           <span
             className={`inline-block text-xs text-muted transition-transform duration-300 ease-out ${
               isExpanded ? "rotate-180" : ""

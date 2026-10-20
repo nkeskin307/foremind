@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { VoiceTextareaField } from "@/components/reflection/voice-textarea-field";
 import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
@@ -12,10 +12,22 @@ import {
   type CompletedRound,
 } from "@/lib/mental-game/completed-rounds";
 import {
-  loadReflectionDraft,
+  getReflectionDraftSnapshot,
+  parseReflectionDraftSnapshot,
   saveReflectionDraft,
   clearReflectionDraft,
+  type ReflectionDraft,
 } from "@/lib/reflection/reflection-draft-storage";
+
+const EMPTY_DRAFT: ReflectionDraft = { whatWorked: "", whatGotInHead: "", whatToRemember: "" };
+
+function subscribeToNothing() {
+  return () => {};
+}
+
+function getServerEmptySnapshot() {
+  return "";
+}
 
 // Fire-and-forget: runs after the reflection is saved so the "Round
 // complete." confirmation never waits on the AI call. The route always
@@ -45,16 +57,26 @@ export function ReflectionForm({
   roundData: RoundData;
   roundId: string | null;
 }) {
-  const [whatWorked, setWhatWorked] = useState(
-    () => (roundId ? loadReflectionDraft(roundId) : null)?.whatWorked ?? "",
+  // Read the draft after mount (server + hydration render see ""), so the
+  // saved answers never cause a hydration mismatch.
+  const rawDraft = useSyncExternalStore(
+    subscribeToNothing,
+    () => (roundId ? getReflectionDraftSnapshot(roundId) : ""),
+    getServerEmptySnapshot,
   );
-  const [whatGotInHead, setWhatGotInHead] = useState(
-    () => (roundId ? loadReflectionDraft(roundId) : null)?.whatGotInHead ?? "",
+  const savedDraft = useMemo(
+    () => parseReflectionDraftSnapshot(rawDraft) ?? EMPTY_DRAFT,
+    [rawDraft],
   );
-  const [whatToRemember, setWhatToRemember] = useState(
-    () => (roundId ? loadReflectionDraft(roundId) : null)?.whatToRemember ?? "",
-  );
+  // null until the golfer types; until then the saved draft shows.
+  const [edits, setEdits] = useState<ReflectionDraft | null>(null);
+  const { whatWorked, whatGotInHead, whatToRemember } = edits ?? savedDraft;
   const [saved, setSaved] = useState<CompletedRound | null>(null);
+
+  function updateField(field: keyof ReflectionDraft, value: string) {
+    setEdits((prev) => ({ ...(prev ?? savedDraft), [field]: value }));
+    setSaved(null);
+  }
 
   const isValid =
     whatWorked.trim().length > 0 &&
@@ -64,9 +86,9 @@ export function ReflectionForm({
   // Autosave so answers typed but not yet submitted survive navigating away
   // (e.g. Back) and back again — mirrors the active-round autosave pattern.
   useEffect(() => {
-    if (!roundId) return;
-    saveReflectionDraft(roundId, { whatWorked, whatGotInHead, whatToRemember });
-  }, [roundId, whatWorked, whatGotInHead, whatToRemember]);
+    if (!roundId || !edits) return;
+    saveReflectionDraft(roundId, edits);
+  }, [roundId, edits]);
 
   function handleSave() {
     if (!isValid) return;
@@ -114,30 +136,21 @@ export function ReflectionForm({
           id="what-worked"
           label="What worked well mentally today?"
           value={whatWorked}
-          onChange={(value) => {
-            setWhatWorked(value);
-            setSaved(null);
-          }}
+          onChange={(value) => updateField("whatWorked", value)}
         />
 
         <VoiceTextareaField
           id="what-got-in-head"
           label="What got in your head?"
           value={whatGotInHead}
-          onChange={(value) => {
-            setWhatGotInHead(value);
-            setSaved(null);
-          }}
+          onChange={(value) => updateField("whatGotInHead", value)}
         />
 
         <VoiceTextareaField
           id="what-to-remember"
           label="What do you want to remember next round?"
           value={whatToRemember}
-          onChange={(value) => {
-            setWhatToRemember(value);
-            setSaved(null);
-          }}
+          onChange={(value) => updateField("whatToRemember", value)}
         />
       </div>
 

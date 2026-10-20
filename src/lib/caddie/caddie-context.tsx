@@ -18,7 +18,9 @@ export type CaddiePreRoundContext = {
 
 export type CaddieRoundMoment = {
   hole: number;
-  holeScore: number;
+  /** null when the hole hasn't been scored yet. */
+  holeScore: number | null;
+  par: number;
   mentalState: string;
 };
 
@@ -26,8 +28,13 @@ export type CaddieRoundContext = {
   course: string;
   holes: number;
   currentHole: number;
+  currentHolePar: number;
+  /** Sum of scored holes only. */
   totalScore: number;
-  currentHoleScore: number;
+  /** Sum of pars on scored holes only. */
+  totalPar: number;
+  holesScored: number;
+  currentHoleScore: number | null;
   currentHoleMentalState: string | null;
   moments: CaddieRoundMoment[];
 };

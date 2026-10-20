@@ -1,4 +1,11 @@
-import type { PreRoundCheckIn } from "@/lib/play/round-data";
+import {
+  normalizeMentalNotes,
+  normalizePars,
+  normalizeScores,
+  parsePreRound,
+  type HoleScore,
+  type PreRoundCheckIn,
+} from "@/lib/play/round-data";
 
 export type ActiveRoundRecord = {
   id: string;
@@ -6,7 +13,8 @@ export type ActiveRoundRecord = {
   date: string;
   holes: number;
   currentHole: number;
-  scores: number[];
+  scores: HoleScore[];
+  pars: number[];
   mentalNotes: (string | null)[];
   preRound: PreRoundCheckIn;
 };
@@ -32,6 +40,8 @@ function isValidRecord(value: unknown): value is ActiveRoundRecord {
     typeof raw.course === "string" &&
     typeof raw.date === "string" &&
     typeof raw.holes === "number" &&
+    Number.isInteger(raw.holes) &&
+    raw.holes > 0 &&
     typeof raw.currentHole === "number" &&
     Array.isArray(raw.scores) &&
     Array.isArray(raw.mentalNotes) &&
@@ -55,7 +65,18 @@ export function parseActiveRoundSnapshot(raw: string): ActiveRoundRecord | null 
 
   try {
     const parsed = JSON.parse(raw);
-    return isValidRecord(parsed) ? parsed : null;
+    if (!isValidRecord(parsed)) return null;
+    // Migrate rounds saved before par/unscored holes existed: missing pars
+    // default to 4, existing numeric scores are kept.
+    const holes = parsed.holes;
+    return {
+      ...parsed,
+      scores: normalizeScores(parsed.scores, holes),
+      pars: normalizePars((parsed as { pars?: unknown }).pars, holes),
+      mentalNotes: normalizeMentalNotes(parsed.mentalNotes, holes),
+      preRound: parsePreRound(parsed.preRound),
+      currentHole: Math.min(Math.max(0, Math.floor(parsed.currentHole)), holes - 1),
+    };
   } catch {
     return null;
   }

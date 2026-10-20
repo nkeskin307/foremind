@@ -51,7 +51,9 @@ type PreRoundContext = {
 
 type RoundMoment = {
   hole: number;
-  holeScore: number;
+  /** null when the hole hasn't been scored. */
+  holeScore: number | null;
+  par: number | null;
   mentalState: string;
 };
 
@@ -59,8 +61,13 @@ type RoundContext = {
   course: string;
   holes: number;
   currentHole: number;
+  currentHolePar: number | null;
+  /** Sum of scored holes only. */
   totalScore: number;
-  currentHoleScore: number;
+  /** Sum of pars on scored holes only (null if the client didn't send it). */
+  totalPar: number | null;
+  holesScored: number | null;
+  currentHoleScore: number | null;
   currentHoleMentalState: string | null;
   moments: RoundMoment[];
 };
@@ -72,13 +79,17 @@ type PastRoundPreRound = {
 };
 
 type PastRoundMoment = {
-  holeScore: number;
+  holeScore: number | null;
+  par: number | null;
   mentalState: string;
 };
 
 type PastRound = {
   course: string;
+  holes: number | null;
+  holesScored: number | null;
   total: number;
+  toPar: number | null;
   moments: PastRoundMoment[];
   preRound: PastRoundPreRound;
   reflection: {
@@ -90,7 +101,10 @@ type PastRound = {
 };
 
 const MAX_HISTORY_ROUNDS = 5;
+// Without par (older clients), a 6+ counts as a difficult hole; with par,
+// double bogey or worse does.
 const DIFFICULT_HOLE_SCORE = 6;
+const DIFFICULT_OVER_PAR = 2;
 const MENTAL_STATE_NAMES = [
   "Confident",
   "Focused",
@@ -126,6 +140,23 @@ function toNumberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function formatToPar(toPar: number): string {
+  if (toPar === 0) return "even par";
+  return toPar > 0 ? `+${toPar}` : `${toPar}`;
+}
+
+function describeHoleScore(score: number | null, par: number | null): string {
+  if (score === null) return "not scored";
+  return par !== null ? `scored ${score} on a par ${par}` : `scored ${score}`;
+}
+
+function isDifficultHole(moment: { holeScore: number | null; par: number | null }): boolean {
+  if (moment.holeScore === null) return false;
+  return moment.par !== null
+    ? moment.holeScore - moment.par >= DIFFICULT_OVER_PAR
+    : moment.holeScore >= DIFFICULT_HOLE_SCORE;
+}
+
 function parsePreRoundContext(value: unknown): PreRoundContext | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
@@ -151,6 +182,9 @@ function parseRoundContext(value: unknown): RoundContext | null {
   const currentHole = typeof raw.currentHole === "number" ? raw.currentHole : 0;
   const totalScore = toNumberOrNull(raw.totalScore);
   const currentHoleScore = toNumberOrNull(raw.currentHoleScore);
+  const currentHolePar = toNumberOrNull(raw.currentHolePar);
+  const totalPar = toNumberOrNull(raw.totalPar);
+  const holesScored = toNumberOrNull(raw.holesScored);
   const currentHoleMentalState =
     typeof raw.currentHoleMentalState === "string" ? raw.currentHoleMentalState : null;
   const moments: RoundMoment[] = Array.isArray(raw.moments)
@@ -163,7 +197,8 @@ function parseRoundContext(value: unknown): RoundContext | null {
         return [
           {
             hole: typeof momentRaw.hole === "number" ? momentRaw.hole : 0,
-            holeScore: typeof momentRaw.holeScore === "number" ? momentRaw.holeScore : 0,
+            holeScore: toNumberOrNull(momentRaw.holeScore),
+            par: toNumberOrNull(momentRaw.par),
             mentalState,
           },
         ];
@@ -178,8 +213,11 @@ function parseRoundContext(value: unknown): RoundContext | null {
     course,
     holes,
     currentHole,
+    currentHolePar,
     totalScore: totalScore ?? 0,
-    currentHoleScore: currentHoleScore ?? 0,
+    totalPar,
+    holesScored,
+    currentHoleScore,
     currentHoleMentalState,
     moments,
   };
@@ -204,11 +242,29 @@ function buildContextBlock(
     if (round.holes) lines.push(`Round length: ${round.holes} holes`);
     if (round.currentHole) {
       lines.push(
-        `Current hole: ${round.currentHole}${round.holes ? ` of ${round.holes}` : ""}`,
+        `Current hole: ${round.currentHole}${round.holes ? ` of ${round.holes}` : ""}${
+          round.currentHolePar !== null ? ` (par ${round.currentHolePar})` : ""
+        }`,
       );
     }
-    lines.push(`Current total score: ${round.totalScore}`);
-    lines.push(`Score so far on current hole: ${round.currentHoleScore}`);
+    if (round.holesScored === 0) {
+      lines.push("No holes have been scored yet this round");
+    } else if (round.holesScored !== null) {
+      const vsPar =
+        round.totalPar !== null ? `, ${formatToPar(round.totalScore - round.totalPar)}` : "";
+      lines.push(
+        `Score so far: ${round.totalScore} across ${round.holesScored} scored hole${
+          round.holesScored === 1 ? "" : "s"
+        }${round.holes ? ` of ${round.holes}` : ""}${vsPar} (unscored holes are not counted)`,
+      );
+    } else {
+      lines.push(`Current total score: ${round.totalScore}`);
+    }
+    lines.push(
+      round.currentHoleScore === null
+        ? "Current hole: no score entered yet"
+        : `Score entered on current hole: ${describeHoleScore(round.currentHoleScore, round.currentHolePar)}`,
+    );
     if (round.currentHoleMentalState) {
       lines.push(
         `Most recent mental state logged on this hole: ${round.currentHoleMentalState}`,
@@ -219,7 +275,10 @@ function buildContextBlock(
     if (earlierMoments.length > 0) {
       lines.push(
         `Mental states logged earlier this round: ${earlierMoments
-          .map((moment) => `${moment.mentalState} on Hole ${moment.hole} (scored ${moment.holeScore})`)
+          .map(
+            (moment) =>
+              `${moment.mentalState} on Hole ${moment.hole} (${describeHoleScore(moment.holeScore, moment.par)})`,
+          )
           .join(", ")}`,
       );
 
@@ -286,7 +345,8 @@ function parsePastRounds(value: unknown): PastRound[] {
           if (!mentalState) return [];
           return [
             {
-              holeScore: typeof momentRaw.holeScore === "number" ? momentRaw.holeScore : 0,
+              holeScore: toNumberOrNull(momentRaw.holeScore),
+              par: toNumberOrNull(momentRaw.par),
               mentalState,
             },
           ];
@@ -295,7 +355,10 @@ function parsePastRounds(value: unknown): PastRound[] {
 
     rounds.push({
       course: typeof raw.course === "string" ? raw.course.trim() : "",
+      holes: toNumberOrNull(raw.holes),
+      holesScored: toNumberOrNull(raw.holesScored),
       total: typeof raw.total === "number" ? raw.total : 0,
+      toPar: toNumberOrNull(raw.toPar),
       moments,
       preRound: {
         focus: toNumberOrNull(preRoundRaw.focus),
@@ -364,8 +427,11 @@ type GolferMemory = {
   averageFocus: number | null;
   averageEnergy: number | null;
   averageConfidence: number | null;
-  mentalStateCounts: Record<MentalStateName, number>;
-  mostRepeatedStates: { state: MentalStateName; count: number }[];
+  /** Number of rounds (not holes) in which each state was logged — always ≤ roundCount. */
+  roundsWithState: Record<MentalStateName, number>;
+  /** Number of individual hole logs for each state, across all rounds. */
+  holeLogCounts: Record<MentalStateName, number>;
+  mostRepeatedStates: { state: MentalStateName; roundCount: number; holeCount: number }[];
   difficultHoleStates: { state: MentalStateName; difficultCount: number; totalCount: number }[];
   workedThemes: ThemeHit[];
   gotInHeadThemes: ThemeHit[];
@@ -382,33 +448,41 @@ type GolferMemory = {
 function buildGolferMemory(rounds: PastRound[]): GolferMemory | null {
   if (rounds.length === 0) return null;
 
-  const mentalStateCounts = Object.fromEntries(
-    MENTAL_STATE_NAMES.map((state) => [state, 0]),
-  ) as Record<MentalStateName, number>;
-  const stateOnDifficultHole = Object.fromEntries(
-    MENTAL_STATE_NAMES.map((state) => [state, 0]),
-  ) as Record<MentalStateName, number>;
+  const zeroCounts = () =>
+    Object.fromEntries(MENTAL_STATE_NAMES.map((state) => [state, 0])) as Record<
+      MentalStateName,
+      number
+    >;
+  const roundsWithState = zeroCounts();
+  const holeLogCounts = zeroCounts();
+  const stateOnDifficultHole = zeroCounts();
 
   for (const round of rounds) {
+    // Each state counts at most once per round, so "X of the last N rounds"
+    // can never exceed N, however many holes it was logged on.
+    const statesThisRound = new Set<MentalStateName>();
     for (const moment of round.moments) {
       if (!(MENTAL_STATE_NAMES as readonly string[]).includes(moment.mentalState)) continue;
       const state = moment.mentalState as MentalStateName;
-      mentalStateCounts[state] += 1;
-      if (moment.holeScore >= DIFFICULT_HOLE_SCORE) stateOnDifficultHole[state] += 1;
+      statesThisRound.add(state);
+      holeLogCounts[state] += 1;
+      if (isDifficultHole(moment)) stateOnDifficultHole[state] += 1;
     }
+    for (const state of statesThisRound) roundsWithState[state] += 1;
   }
 
   const mostRepeatedStates = MENTAL_STATE_NAMES.map((state) => ({
     state,
-    count: mentalStateCounts[state],
+    roundCount: Math.min(roundsWithState[state], rounds.length),
+    holeCount: holeLogCounts[state],
   }))
-    .filter(({ count }) => count >= 2)
-    .sort((a, b) => b.count - a.count);
+    .filter(({ roundCount }) => roundCount >= 2)
+    .sort((a, b) => b.roundCount - a.roundCount || b.holeCount - a.holeCount);
 
   const difficultHoleStates = MENTAL_STATE_NAMES.map((state) => ({
     state,
     difficultCount: stateOnDifficultHole[state],
-    totalCount: mentalStateCounts[state],
+    totalCount: holeLogCounts[state],
   })).filter(
     ({ totalCount, difficultCount }) => totalCount >= 2 && difficultCount / totalCount >= 0.5,
   );
@@ -424,7 +498,8 @@ function buildGolferMemory(rounds: PastRound[]): GolferMemory | null {
     averageConfidence: average(
       rounds.map((r) => r.preRound.confidence).filter((v): v is number => v !== null),
     ),
-    mentalStateCounts,
+    roundsWithState,
+    holeLogCounts,
     mostRepeatedStates,
     difficultHoleStates,
     workedThemes: findRepeatedThemes(rounds, (r) => r.reflection.whatWorked),
@@ -448,22 +523,25 @@ function formatGolferMemory(memory: GolferMemory): string {
   }
 
   lines.push(
-    `Mental state counts across these rounds: ${MENTAL_STATE_NAMES.map(
-      (state) => `${state} ${memory.mentalStateCounts[state]}`,
+    `Number of rounds (out of ${memory.roundCount}) in which each mental state was logged at least once: ${MENTAL_STATE_NAMES.map(
+      (state) => `${state} ${memory.roundsWithState[state]}`,
     ).join(", ")}`,
   );
 
   if (memory.mostRepeatedStates.length > 0) {
     lines.push(
       `Most repeated mental states: ${memory.mostRepeatedStates
-        .map(({ state, count }) => `${state} appeared in ${count} of the last ${memory.roundCount} rounds`)
+        .map(
+          ({ state, roundCount, holeCount }) =>
+            `${state} appeared in ${roundCount} of the last ${memory.roundCount} rounds (logged on ${holeCount} hole${holeCount === 1 ? "" : "s"} in total)`,
+        )
         .join("; ")}`,
     );
   }
 
   for (const { state, difficultCount, totalCount } of memory.difficultHoleStates) {
     lines.push(
-      `${state} was logged on a difficult hole (score ${DIFFICULT_HOLE_SCORE}+) in ${difficultCount} of its ${totalCount} occurrences`,
+      `${state} was logged on a difficult hole (double bogey or worse) on ${difficultCount} of the ${totalCount} holes where it was logged`,
     );
   }
 
@@ -502,12 +580,23 @@ function buildHistoryBlock(rounds: PastRound[], memory: GolferMemory | null): st
       preRoundParts.push(`Confidence ${round.preRound.confidence}/5`);
     if (preRoundParts.length > 0) lines.push(`- Pre-round: ${preRoundParts.join(", ")}`);
 
-    if (round.total) lines.push(`- Total score: ${round.total}`);
+    if (round.holesScored !== null) {
+      if (round.holesScored > 0) {
+        const vsPar = round.toPar !== null ? `, ${formatToPar(round.toPar)}` : "";
+        lines.push(
+          `- Score: ${round.total} across ${round.holesScored}${
+            round.holes ? ` of ${round.holes}` : ""
+          } scored holes${vsPar}`,
+        );
+      }
+    } else if (round.total) {
+      lines.push(`- Total score: ${round.total}`);
+    }
 
     if (round.moments.length > 0) {
       lines.push(
         `- Mental states logged: ${round.moments
-          .map((moment) => `${moment.mentalState} (hole scored ${moment.holeScore})`)
+          .map((moment) => `${moment.mentalState} (${describeHoleScore(moment.holeScore, moment.par)})`)
           .join(", ")}`,
       );
     }
@@ -583,7 +672,8 @@ function logGolferMemoryDebugInfo(
     averageFocus: memory.averageFocus,
     averageEnergy: memory.averageEnergy,
     averageConfidence: memory.averageConfidence,
-    mentalStateCounts: memory.mentalStateCounts,
+    roundsWithState: memory.roundsWithState,
+    holeLogCounts: memory.holeLogCounts,
     repeatedMentalStates: memory.mostRepeatedStates,
     roundsWithReflection: `${roundsWithReflection}/${pastRounds.length}`,
     repeatedReflectionThemes: {

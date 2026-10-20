@@ -9,8 +9,17 @@ import { MicIcon } from "@/components/icons/mic-icon";
 import { RotateIcon } from "@/components/icons/rotate-icon";
 import { HomeIcon } from "@/components/icons/home-icon";
 import { useCaddieContext } from "@/lib/caddie/caddie-context";
-import { getActiveRoundSnapshot, clearActiveRound } from "@/lib/play/active-round-storage";
+import {
+  getActiveRoundSnapshot,
+  clearActiveRound,
+  loadActiveRound,
+} from "@/lib/play/active-round-storage";
 import { clearCheckInDraft } from "@/lib/prepare/check-in-draft-storage";
+import { checkInToQueryString } from "@/lib/prepare/check-in-params";
+import {
+  clearLatestCheckIn,
+  loadLatestCheckIn,
+} from "@/lib/prepare/latest-check-in-storage";
 
 type ConfirmAction = "restart-round" | "start-over" | null;
 
@@ -42,17 +51,21 @@ export function AppHeader() {
 
   function handleConfirm() {
     if (confirmAction === "restart-round") {
+      // Carry the latest check-in into the restarted round (falling back to
+      // the round's own check-in for rounds started before it was stored).
+      const checkIn = loadLatestCheckIn() ?? loadActiveRound()?.preRound ?? null;
+      const query = checkIn ? checkInToQueryString(checkIn) : "";
       clearActiveRound();
       // A full navigation, not router.push: Restart Round can be triggered
       // while already on /play, where a client-side push to the same route
       // wouldn't remount the page — leaving the in-memory round mounted, its
       // autosave effect would then immediately re-write the just-cleared
       // round straight back into localStorage.
-      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-      window.location.href = "/play";
+      window.location.href = query ? `/play?${query}` : "/play";
     } else if (confirmAction === "start-over") {
       clearActiveRound();
       clearCheckInDraft();
+      clearLatestCheckIn();
       // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       window.location.href = "/";
     }
@@ -129,6 +142,7 @@ export function AppHeader() {
                           // starting again from the homepage feels fresh.
                           clearActiveRound();
                           clearCheckInDraft();
+                          clearLatestCheckIn();
                         }}
                         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
                       >

@@ -6,9 +6,15 @@ import { FlagIcon } from "@/components/icons/flag-icon";
 import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
 import type { PreRoundCheckIn } from "@/lib/play/round-data";
 import {
+  clearActiveRound,
   getActiveRoundSnapshot,
   parseActiveRoundSnapshot,
 } from "@/lib/play/active-round-storage";
+import {
+  getLatestCheckInSnapshot,
+  markLatestCheckInHandled,
+  parseLatestCheckInSnapshot,
+} from "@/lib/prepare/latest-check-in-storage";
 
 type HoleCount = 9 | 18;
 
@@ -16,8 +22,17 @@ function subscribeToNothing() {
   return () => {};
 }
 
-function getServerActiveRoundSnapshot() {
+function getServerEmptySnapshot() {
   return "";
+}
+
+function hasCheckInData(checkIn: PreRoundCheckIn): boolean {
+  return (
+    checkIn.focus !== null ||
+    checkIn.energy !== null ||
+    checkIn.confidence !== null ||
+    checkIn.note.trim().length > 0
+  );
 }
 
 export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
@@ -26,21 +41,107 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
   const [round, setRound] = useState<{ course: string; holes: HoleCount } | null>(
     null,
   );
+  const [resumeChoice, setResumeChoice] = useState<"resume" | "new" | null>(null);
   const rawActiveRound = useSyncExternalStore(
     subscribeToNothing,
     getActiveRoundSnapshot,
-    getServerActiveRoundSnapshot,
+    getServerEmptySnapshot,
   );
-  const resumedRound = useMemo(
+  const activeRound = useMemo(
     () => parseActiveRoundSnapshot(rawActiveRound),
     [rawActiveRound],
   );
+  const rawLatestCheckIn = useSyncExternalStore(
+    subscribeToNothing,
+    getLatestCheckInSnapshot,
+    getServerEmptySnapshot,
+  );
+  const latestCheckIn = useMemo(
+    () => parseLatestCheckInSnapshot(rawLatestCheckIn),
+    [rawLatestCheckIn],
+  );
+
+  // The URL carries the check-in on the normal prepare → routine → play
+  // path. When it's missing (Restart Round, "Start a Round" from My Mental
+  // Game), fall back to the latest submitted check-in.
+  const roundPreRound = useMemo<PreRoundCheckIn>(() => {
+    if (hasCheckInData(preRound) || !latestCheckIn) return preRound;
+    return {
+      focus: latestCheckIn.focus,
+      energy: latestCheckIn.energy,
+      confidence: latestCheckIn.confidence,
+      note: latestCheckIn.note,
+    };
+  }, [preRound, latestCheckIn]);
+
+  const resumedRound = resumeChoice === "new" ? null : activeRound;
+
+  // A check-in submitted after the unfinished round started, and not yet
+  // acted on, means the golfer is starting a new session — ask first.
+  const newCheckInArrived =
+    resumedRound !== null &&
+    latestCheckIn !== null &&
+    !latestCheckIn.handled &&
+    new Date(latestCheckIn.submittedAt).getTime() > new Date(resumedRound.date).getTime();
 
   const isValid = course.trim().length > 0;
 
   function handleBeginRound() {
     if (!isValid) return;
+    markLatestCheckInHandled();
     setRound({ course: course.trim(), holes });
+  }
+
+  function handleResume() {
+    markLatestCheckInHandled();
+    setResumeChoice("resume");
+  }
+
+  function handleStartNew() {
+    clearActiveRound();
+    setResumeChoice("new");
+  }
+
+  if (resumedRound && newCheckInArrived && resumeChoice === null) {
+    return (
+      <div className="relative overflow-hidden">
+        <FlagstickMotif
+          className="motif-flag-glow pointer-events-none absolute -right-14 -top-12 h-[400px] w-auto opacity-[0.36]"
+        />
+        <div className="relative mx-auto w-full max-w-md px-6 py-16">
+          <h1 className="motion-heading flex items-center gap-2.5 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+            <FlagIcon className="h-6 w-6 text-sage" />
+            Unfinished round
+          </h1>
+          <div className="motion-body">
+            <p className="mt-2 text-base text-muted">
+              You have an unfinished round at {resumedRound.course || "your course"} (hole{" "}
+              {resumedRound.currentHole + 1} of {resumedRound.holes}). Resume your
+              unfinished round or start a new one?
+            </p>
+            <p className="mt-2 text-xs text-muted">
+              Starting a new round discards the unfinished one and uses today&apos;s
+              check-in.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleResume}
+              className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
+            >
+              Resume Round
+            </button>
+            <button
+              type="button"
+              onClick={handleStartNew}
+              className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-border bg-surface px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:border-forest"
+            >
+              Start New Round
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (resumedRound) {
@@ -59,7 +160,7 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
       <ActiveRound
         courseName={round.course}
         totalHoles={round.holes}
-        preRound={preRound}
+        preRound={roundPreRound}
         initialActiveRound={null}
       />
     );

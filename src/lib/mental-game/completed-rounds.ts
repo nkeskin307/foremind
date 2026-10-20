@@ -1,4 +1,4 @@
-import type { RoundData } from "@/lib/play/round-data";
+import { normalizeRoundData, summarizeScores, type RoundData } from "@/lib/play/round-data";
 
 export type ReflectionAnswers = {
   whatWorked: string;
@@ -40,10 +40,43 @@ export function getRoundsSnapshot(): string {
   }
 }
 
+function normalizeReflection(value: unknown): ReflectionAnswers {
+  const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return {
+    whatWorked: typeof raw.whatWorked === "string" ? raw.whatWorked : "",
+    whatGotInHead: typeof raw.whatGotInHead === "string" ? raw.whatGotInHead : "",
+    whatToRemember: typeof raw.whatToRemember === "string" ? raw.whatToRemember : "",
+  };
+}
+
+/**
+ * Safely migrates a stored round: rounds saved before par existed get
+ * par 4 on every hole, old numeric scores are kept, and the total is
+ * recomputed from scored holes only.
+ */
+function normalizeCompletedRound(value: unknown, index: number): CompletedRound | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const analysis =
+    raw.analysis && typeof raw.analysis === "object"
+      ? (raw.analysis as PostRoundAnalysis)
+      : undefined;
+
+  return {
+    ...normalizeRoundData(raw),
+    id: typeof raw.id === "string" && raw.id ? raw.id : `legacy-${index}`,
+    reflection: normalizeReflection(raw.reflection),
+    ...(analysis ? { analysis } : {}),
+  };
+}
+
 export function parseRoundsSnapshot(raw: string): CompletedRound[] {
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item, index) => normalizeCompletedRound(item, index))
+      .filter((round): round is CompletedRound => round !== null);
   } catch {
     return [];
   }
@@ -54,14 +87,22 @@ export function loadCompletedRounds(): CompletedRound[] {
 }
 
 export type CaddieHistoryMoment = {
-  holeScore: number;
+  hole: number;
+  /** null when the hole was never scored. */
+  holeScore: number | null;
+  par: number;
   mentalState: string;
 };
 
 export type CaddieHistoryRound = {
   date: string;
   course: string;
+  holes: number;
+  holesScored: number;
+  /** Sum of scored holes only. */
   total: number;
+  /** Score relative to par across scored holes only. */
+  toPar: number;
   preRound: {
     focus: number | null;
     energy: number | null;
@@ -75,14 +116,23 @@ export function toCaddieHistoryPayload(round: CompletedRound): CaddieHistoryRoun
   const moments: CaddieHistoryMoment[] = [];
   round.mentalNotes.forEach((state, index) => {
     if (state) {
-      moments.push({ holeScore: round.scores[index] ?? 0, mentalState: state });
+      moments.push({
+        hole: index + 1,
+        holeScore: round.scores[index] ?? null,
+        par: round.pars[index],
+        mentalState: state,
+      });
     }
   });
+  const summary = summarizeScores(round.scores, round.pars);
 
   return {
     date: round.date,
     course: round.course,
-    total: round.total,
+    holes: round.holes,
+    holesScored: summary.holesScored,
+    total: summary.total,
+    toPar: summary.toPar,
     preRound: {
       focus: round.preRound.focus,
       energy: round.preRound.energy,
@@ -121,6 +171,11 @@ const EMPTY_REFLECTION: ReflectionAnswers = {
  * completes the reflection step.
  */
 export function createCompletedRound(id: string, round: RoundData): CompletedRound {
+  // Idempotent: a second Finish Round tap (or a retry) for the same id
+  // returns the already-saved round instead of appending a duplicate.
+  const existing = loadCompletedRounds().find((saved) => saved.id === id);
+  if (existing) return existing;
+
   const completedRound: CompletedRound = { ...round, id, reflection: EMPTY_REFLECTION };
   persistRounds([...loadCompletedRounds(), completedRound]);
   return completedRound;
