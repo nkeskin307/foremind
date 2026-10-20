@@ -14,6 +14,12 @@ import {
   type CaddieHistoryRound,
   type CompletedRound,
 } from "@/lib/mental-game/completed-rounds";
+import {
+  buildCourseHistories,
+  findCourseHistory,
+  toCaddieCourseHistory,
+  type CaddieCourseHistory,
+} from "@/lib/mental-game/course-history";
 
 const FALLBACK_ERROR_MESSAGE =
   "The Mental Caddie couldn't respond right now. Please try again in a moment.";
@@ -67,18 +73,32 @@ export function MentalCaddie() {
   // AppHeader's desktop pill and mobile icon button both call openPanel()
   // directly, so history is derived here from the panel being open rather
   // than loaded inside a single trigger's click handler.
-  const history = useMemo<CaddieHistoryRound[]>(() => {
-    if (!isPanelOpen) return [];
+  const roundCourse = context.round?.course ?? "";
+  const { history, courseHistory } = useMemo<{
+    history: CaddieHistoryRound[];
+    courseHistory: CaddieCourseHistory | null;
+  }>(() => {
+    if (!isPanelOpen) return { history: [], courseHistory: null };
 
     const allCompletedRounds = loadCompletedRounds();
     logCaddieLocalStorageDebugInfo(allCompletedRounds);
 
-    return allCompletedRounds
-      .slice()
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, MAX_HISTORY_ROUNDS)
-      .map(toCaddieHistoryPayload);
-  }, [isPanelOpen]);
+    return {
+      history: allCompletedRounds
+        .slice()
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+        .slice(0, MAX_HISTORY_ROUNDS)
+        .map(toCaddieHistoryPayload),
+      // Only during a round: past rounds at this course (or an explicit
+      // "none yet" so the Caddie never invents course history).
+      courseHistory: roundCourse.trim()
+        ? toCaddieCourseHistory(
+            roundCourse,
+            findCourseHistory(buildCourseHistories(allCompletedRounds), roundCourse),
+          )
+        : null,
+    };
+  }, [isPanelOpen, roundCourse]);
 
   // Not memoized: read fresh every render the History tab is showing, so it
   // always includes entries logged earlier in the same panel session (e.g.
@@ -105,7 +125,7 @@ export function MentalCaddie() {
       const res = await fetch("/api/caddie", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmed, context, history }),
+        body: JSON.stringify({ message: trimmed, context, history, courseHistory }),
       });
 
       const data = await res.json();

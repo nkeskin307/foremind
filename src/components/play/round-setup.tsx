@@ -4,7 +4,15 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { ActiveRound } from "@/components/play/active-round";
 import { FlagIcon } from "@/components/icons/flag-icon";
 import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
-import type { PreRoundCheckIn } from "@/lib/play/round-data";
+import { formatToPar, type PreRoundCheckIn } from "@/lib/play/round-data";
+import { getRoundsSnapshot, parseRoundsSnapshot } from "@/lib/mental-game/completed-rounds";
+import {
+  buildCourseHistories,
+  findCourseHistory,
+  formatRoundDate,
+  normalizeCourseName,
+  type CourseHistory,
+} from "@/lib/mental-game/course-history";
 import {
   clearActiveRound,
   getActiveRoundSnapshot,
@@ -24,6 +32,52 @@ function subscribeToNothing() {
 
 function getServerEmptySnapshot() {
   return "";
+}
+
+function getServerRoundsSnapshot() {
+  return "[]";
+}
+
+const MAX_COURSE_SUGGESTIONS = 5;
+
+function LastTimeCard({ history }: { history: CourseHistory }) {
+  const last = history.rounds[0];
+  const topState = last.topStates[0];
+  return (
+    <div className="motion-fade mt-4 rounded-2xl border border-border bg-surface px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-sage">
+        Last time at {history.displayName}
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        {formatRoundDate(last.date)} · {last.holes} Holes
+        {history.rounds.length > 1 ? ` · ${history.rounds.length} rounds here` : ""}
+      </p>
+      <p className="mt-2 text-sm text-foreground">
+        {last.holesScored > 0
+          ? `${last.total} (${formatToPar(last.toPar)})${
+              last.holesScored < last.holes
+                ? ` · ${last.holesScored} of ${last.holes} holes scored`
+                : ""
+            }`
+          : "No holes were scored."}
+      </p>
+      <p className="mt-1 text-sm text-foreground">
+        {topState
+          ? `Most common mental state: ${topState.state} (${topState.count} hole${
+              topState.count === 1 ? "" : "s"
+            })`
+          : "No mental states logged."}
+      </p>
+      {last.whatToRemember ? (
+        <p className="mt-2 text-sm text-foreground">
+          <span className="text-muted">You wanted to remember: </span>
+          &ldquo;{last.whatToRemember}&rdquo;
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-muted">No reflection was saved for that round.</p>
+      )}
+    </div>
+  );
 }
 
 function hasCheckInData(checkIn: PreRoundCheckIn): boolean {
@@ -84,12 +138,29 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
     !latestCheckIn.handled &&
     new Date(latestCheckIn.submittedAt).getTime() > new Date(resumedRound.date).getTime();
 
+  const rawRounds = useSyncExternalStore(
+    subscribeToNothing,
+    getRoundsSnapshot,
+    getServerRoundsSnapshot,
+  );
+  const courseHistories = useMemo(
+    () => buildCourseHistories(parseRoundsSnapshot(rawRounds)),
+    [rawRounds],
+  );
+  const matchedHistory = findCourseHistory(courseHistories, course);
+  const typedKey = normalizeCourseName(course);
+  const courseSuggestions = courseHistories
+    .filter((history) => history.key !== typedKey && history.key.includes(typedKey))
+    .slice(0, MAX_COURSE_SUGGESTIONS);
+
   const isValid = course.trim().length > 0;
 
   function handleBeginRound() {
     if (!isValid) return;
     markLatestCheckInHandled();
-    setRound({ course: course.trim(), holes });
+    // Reuse the saved spelling for a course played before, so history
+    // stays grouped under one name.
+    setRound({ course: matchedHistory?.displayName ?? course.trim(), holes });
   }
 
   function handleResume() {
@@ -196,6 +267,26 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
           placeholder="Enter course name"
           className="mt-2 w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
         />
+
+        {courseSuggestions.length > 0 && (
+          <div className="mt-3">
+            <p className="text-xs text-muted">Courses you&apos;ve played</p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {courseSuggestions.map((history) => (
+                <button
+                  key={history.key}
+                  type="button"
+                  onClick={() => setCourse(history.displayName)}
+                  className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground"
+                >
+                  {history.displayName}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {matchedHistory && <LastTimeCard history={matchedHistory} />}
       </div>
 
       <div className="mt-6">

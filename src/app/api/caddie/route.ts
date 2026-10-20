@@ -35,7 +35,9 @@ Then connect that pattern to what is happening right now.
 
 Keep the full response concise.
 
-Never invent a pattern — only reference history when the golfer's saved data actually supports it. If there is no relevant pattern, skip the historical observation and focus only on the current round.`;
+Never invent a pattern — only reference history when the golfer's saved data actually supports it. If there is no relevant pattern, skip the historical observation and focus only on the current round.
+
+When a "This course" section is provided, you may refer to it naturally (for example "Last time at this course you…"). If it says there are no previous rounds at this course, never claim or imply the golfer has played it before.`;
 
 const UNAVAILABLE_MESSAGE = "The Mental Caddie couldn't respond right now.";
 const BUSY_MESSAGE = "My Caddie is busy for a moment. Try again in a few seconds.";
@@ -101,6 +103,25 @@ type PastRound = {
 };
 
 const MAX_HISTORY_ROUNDS = 5;
+const MAX_COURSE_ROUNDS = 3;
+
+type CourseHistoryRound = {
+  date: string;
+  holes: number | null;
+  holesScored: number | null;
+  total: number | null;
+  toPar: number | null;
+  states: string[];
+  whatToRemember: string;
+  whatGotInHead: string;
+};
+
+type CourseHistory = {
+  course: string;
+  roundsPlayed: number;
+  rounds: CourseHistoryRound[];
+  stateRoundCounts: { state: string; count: number }[];
+};
 // Without par (older clients), a 6+ counts as a difficult hole; with par,
 // double bogey or worse does.
 const DIFFICULT_HOLE_SCORE = 6;
@@ -384,6 +405,100 @@ function parsePastRounds(value: unknown): PastRound[] {
   }
 
   return rounds;
+}
+
+function parseCourseHistory(value: unknown): CourseHistory | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  const course = typeof raw.course === "string" ? raw.course.trim() : "";
+  if (!course) return null;
+
+  const rounds: CourseHistoryRound[] = Array.isArray(raw.rounds)
+    ? raw.rounds.slice(0, MAX_COURSE_ROUNDS).flatMap((item): CourseHistoryRound[] => {
+        if (!item || typeof item !== "object") return [];
+        const r = item as Record<string, unknown>;
+        return [
+          {
+            date: typeof r.date === "string" ? r.date : "",
+            holes: toNumberOrNull(r.holes),
+            holesScored: toNumberOrNull(r.holesScored),
+            total: toNumberOrNull(r.total),
+            toPar: toNumberOrNull(r.toPar),
+            states: Array.isArray(r.states)
+              ? [...new Set(r.states.filter((s): s is string => typeof s === "string" && !!s))]
+              : [],
+            whatToRemember: typeof r.whatToRemember === "string" ? r.whatToRemember.trim() : "",
+            whatGotInHead: typeof r.whatGotInHead === "string" ? r.whatGotInHead.trim() : "",
+          },
+        ];
+      })
+    : [];
+
+  // roundsPlayed can exceed the detailed rounds sent, but never be fewer.
+  const roundsPlayed = Math.max(
+    rounds.length,
+    typeof raw.roundsPlayed === "number" && raw.roundsPlayed >= 0
+      ? Math.floor(raw.roundsPlayed)
+      : 0,
+  );
+
+  const stateRoundCounts = Array.isArray(raw.stateRoundCounts)
+    ? raw.stateRoundCounts.flatMap((item): { state: string; count: number }[] => {
+        if (!item || typeof item !== "object") return [];
+        const c = item as Record<string, unknown>;
+        if (typeof c.state !== "string" || typeof c.count !== "number") return [];
+        // Per-round counts can never exceed the rounds played here.
+        return [{ state: c.state, count: Math.min(Math.max(0, Math.floor(c.count)), roundsPlayed) }];
+      })
+    : [];
+
+  return { course, roundsPlayed, rounds, stateRoundCounts };
+}
+
+function buildCourseBlock(history: CourseHistory | null): string {
+  if (!history) return "";
+
+  if (history.roundsPlayed === 0) {
+    return `This course (${history.course}): the golfer has no previous saved rounds here. Do not claim or imply any past experience at this course.\n\n`;
+  }
+
+  const lines: string[] = [
+    `Previous saved rounds at this course: ${history.roundsPlayed}`,
+  ];
+
+  const repeated = history.stateRoundCounts.filter(({ count }) => count >= 1);
+  if (repeated.length > 0) {
+    lines.push(
+      `Mental states by round at this course: ${repeated
+        .map(({ state, count }) => `${state} in ${count} of ${history.roundsPlayed} rounds`)
+        .join(", ")}`,
+    );
+  }
+
+  history.rounds.forEach((round, index) => {
+    const label = index === 0 ? "Last time here" : `Earlier round here`;
+    const parts: string[] = [formatHistoryDate(round.date)];
+    if (round.holesScored !== null && round.holesScored > 0 && round.total !== null) {
+      parts.push(
+        `scored ${round.total}${round.toPar !== null ? ` (${formatToPar(round.toPar)})` : ""} across ${round.holesScored}${round.holes ? ` of ${round.holes}` : ""} scored holes`,
+      );
+    } else {
+      parts.push("no holes scored");
+    }
+    parts.push(
+      round.states.length > 0
+        ? `mental states logged: ${round.states.join(", ")}`
+        : "no mental states logged",
+    );
+    lines.push(`${label}: ${parts.join("; ")}`);
+    if (round.whatGotInHead) lines.push(`  What got in their head: "${round.whatGotInHead}"`);
+    if (round.whatToRemember)
+      lines.push(`  What they wanted to remember: "${round.whatToRemember}"`);
+  });
+
+  return `This course (${history.course}) — summary of the golfer's previous rounds here, counted per round (most recent first). Only refer to what is listed:\n${lines
+    .map((line) => (line.startsWith("  ") ? line : `- ${line}`))
+    .join("\n")}\n\n`;
 }
 
 function average(values: number[]): number | null {
@@ -783,7 +898,24 @@ export async function POST(request: Request) {
   logGolferMemoryDebugInfo(golferMemory, pastRounds);
   const historyBlock = buildHistoryBlock(pastRounds, golferMemory);
 
-  const promptText = `${contextBlock}${historyBlock}Golfer says: ${message.trim()}`;
+  const rawCourseHistory =
+    body && typeof body === "object" && "courseHistory" in body
+      ? (body as { courseHistory: unknown }).courseHistory
+      : undefined;
+  const courseHistory = parseCourseHistory(rawCourseHistory);
+  // TEMPORARY DEV-ONLY DIAGNOSTIC LOGGING — counts only, no reflection text.
+  if (process.env.NODE_ENV !== "production") {
+    console.log("[caddie] course history:", courseHistory
+      ? {
+          course: courseHistory.course,
+          roundsPlayed: courseHistory.roundsPlayed,
+          stateRoundCounts: courseHistory.stateRoundCounts,
+        }
+      : "none sent (no active round)");
+  }
+  const courseBlock = buildCourseBlock(courseHistory);
+
+  const promptText = `${contextBlock}${courseBlock}${historyBlock}Golfer says: ${message.trim()}`;
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {

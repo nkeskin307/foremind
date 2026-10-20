@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ScorecardIcon } from "@/components/icons/scorecard-icon";
 import { SparkleIcon } from "@/components/icons/sparkle-icon";
 import { HistoryIcon } from "@/components/icons/history-icon";
+import { FlagIcon } from "@/components/icons/flag-icon";
 import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
 import {
   getRoundsSnapshot,
@@ -13,6 +14,14 @@ import {
   type PostRoundAnalysis,
 } from "@/lib/mental-game/completed-rounds";
 import { formatToPar, summarizeScores } from "@/lib/play/round-data";
+import {
+  buildCourseHistories,
+  formatAverageToPar,
+  formatRoundDate,
+  type CourseHistory,
+  type CourseRoundSummary,
+  type ScoreSplit,
+} from "@/lib/mental-game/course-history";
 import {
   getCaddieLogSnapshot,
   parseCaddieLogSnapshot,
@@ -286,6 +295,120 @@ function AnalysisSection({ label, text }: { label: string; text: string }) {
   );
 }
 
+function formatRoundScore(round: { holesScored: number; holes: number; total: number; toPar: number }) {
+  if (round.holesScored === 0) return "Not scored";
+  const partial = round.holesScored < round.holes ? ` · ${round.holesScored}/${round.holes}` : "";
+  return `${round.total} (${formatToPar(round.toPar)})${partial}`;
+}
+
+function formatSplit(split: ScoreSplit | null): string {
+  return split ? formatRoundScore(split) : "9-hole round";
+}
+
+function CompareRow({
+  label,
+  latest,
+  previous,
+}: {
+  label: string;
+  latest: string;
+  previous: string;
+}) {
+  return (
+    <>
+      <p className="col-span-2 mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        {label}
+      </p>
+      <p className="text-sm text-foreground">{latest}</p>
+      <p className="text-sm text-foreground">{previous}</p>
+    </>
+  );
+}
+
+function formatTopStates(round: CourseRoundSummary): string {
+  if (round.topStates.length === 0) return "None logged";
+  return round.topStates
+    .slice(0, 2)
+    .map(({ state, count }) => `${state} (${count})`)
+    .join(", ");
+}
+
+function CourseCard({ history }: { history: CourseHistory }) {
+  const roundCount = history.rounds.length;
+  const [latest, previous] = history.rounds;
+  const has18 = latest.holes === 18 || previous?.holes === 18;
+
+  return (
+    <div className="card-hover rounded-2xl border border-border bg-surface px-4 py-3">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-sm font-medium text-foreground">{history.displayName}</p>
+          <p className="mt-1 text-xs text-muted">
+            {roundCount} round{roundCount === 1 ? "" : "s"} played
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-sm font-semibold text-foreground">
+            {history.averageToPar !== null ? formatAverageToPar(history.averageToPar) : "—"}
+          </p>
+          <p className="text-xs text-muted">avg vs par</p>
+        </div>
+      </div>
+
+      <p className="mt-2 text-xs text-muted">
+        {history.stateRoundCounts.length > 0
+          ? `Mental states: ${history.stateRoundCounts
+              .slice(0, 3)
+              .map(({ state, count }) => `${state} (${count} of ${roundCount} rounds)`)
+              .join(", ")}`
+          : "No mental states logged here yet."}
+      </p>
+
+      {previous && (
+        <div className="mt-3 border-t border-border pt-3">
+          <div className="grid grid-cols-2 gap-x-4">
+            <p className="text-xs font-semibold text-sage">
+              Latest · {formatRoundDate(latest.date)}
+            </p>
+            <p className="text-xs font-semibold text-sage">
+              Previous · {formatRoundDate(previous.date)}
+            </p>
+            <CompareRow
+              label="Score vs par"
+              latest={formatRoundScore(latest)}
+              previous={formatRoundScore(previous)}
+            />
+            {has18 && (
+              <>
+                <CompareRow
+                  label="Front 9"
+                  latest={formatSplit(latest.front9)}
+                  previous={formatSplit(previous.front9)}
+                />
+                <CompareRow
+                  label="Back 9"
+                  latest={formatSplit(latest.back9)}
+                  previous={formatSplit(previous.back9)}
+                />
+              </>
+            )}
+            <CompareRow
+              label="Top mental states (holes)"
+              latest={formatTopStates(latest)}
+              previous={formatTopStates(previous)}
+            />
+            <CompareRow
+              label="Takeaway"
+              latest={latest.whatToRemember || "No reflection saved"}
+              previous={previous.whatToRemember || "No reflection saved"}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RoundCard({
   round,
   isExpanded,
@@ -458,6 +581,8 @@ export function MentalGameDashboard() {
     new Map([...stateRoundCounts].filter(([state]) => DIFFICULT_STATES.includes(state))),
   );
 
+  const courseHistories = buildCourseHistories(rounds);
+
   const analyzedRounds = recentRounds.filter((round) => round.analysis);
   const whatToWatch = buildLearningTakeaways(analyzedRounds);
   const whatsHelping = buildWhatsHelping(analyzedRounds);
@@ -488,7 +613,7 @@ export function MentalGameDashboard() {
         className="mt-10 lg:grid lg:items-start lg:gap-x-10"
         style={{
           gridTemplateColumns: "38% 62%",
-          gridTemplateAreas: '"baseline review" "recent review"',
+          gridTemplateAreas: '"baseline review" "recent review" "courses review"',
         }}
       >
         <section className="motion-body" style={{ gridArea: "review" }}>
@@ -666,6 +791,22 @@ export function MentalGameDashboard() {
             ))}
           </div>
         </section>
+
+        {courseHistories.length > 0 && (
+          <section style={{ gridArea: "courses" }} className="motion-body-late mt-8">
+            <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-sage">
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sage-soft">
+                <FlagIcon className="h-3.5 w-3.5 text-sage" />
+              </span>
+              By Course
+            </h2>
+            <div className="mt-3 space-y-2">
+              {courseHistories.map((history) => (
+                <CourseCard key={history.key} history={history} />
+              ))}
+            </div>
+          </section>
+        )}
       </div>
       </div>
     </div>
