@@ -4,6 +4,7 @@ import { MentalCaddie } from "@/components/caddie/mental-caddie";
 import { AppHeader } from "@/components/layout/app-header";
 import { PageTransition } from "@/components/layout/page-transition";
 import { CaddieContextProvider } from "@/lib/caddie/caddie-context";
+import { HtmlLang } from "@/lib/i18n/use-i18n";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-background pb-10 font-sans text-foreground">
+        <HtmlLang />
         <CaddieContextProvider>
           <AppHeader />
           <PageTransition>{children}</PageTransition>

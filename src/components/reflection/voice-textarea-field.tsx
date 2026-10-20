@@ -2,6 +2,7 @@
 
 import { MicIcon } from "@/components/icons/mic-icon";
 import { useSpeechRecognition } from "@/lib/speech/use-speech-recognition";
+import { useI18n } from "@/lib/i18n/use-i18n";
 
 export function VoiceTextareaField({
   id,
@@ -16,7 +17,8 @@ export function VoiceTextareaField({
   onChange: (value: string) => void;
   rows?: number;
 }) {
-  const { supported, isListening, error, start, stop } = useSpeechRecognition(
+  const { t } = useI18n();
+  const { supported, isListening, errorCode, start, stop } = useSpeechRecognition(
     (transcript) => {
       onChange(value ? `${value} ${transcript}` : transcript);
     },
@@ -42,7 +44,8 @@ export function VoiceTextareaField({
             type="button"
             onClick={isListening ? stop : start}
             aria-pressed={isListening}
-            title={isListening ? "Stop listening" : "Speak your answer"}
+            title={isListening ? t.voice.stopListening : t.voice.speakAnswer}
+            aria-label={isListening ? t.voice.stopListening : t.voice.speakAnswer}
             className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
               isListening
                 ? "border-forest bg-forest text-foreground"
@@ -58,14 +61,16 @@ export function VoiceTextareaField({
       </div>
 
       {supported && isListening && (
-        <p className="mt-1.5 text-xs text-sage">Listening… tap the mic to stop.</p>
+        <p className="mt-1.5 text-xs text-sage">{t.voice.listening}</p>
       )}
-      {supported && error && (
-        <p className="mt-1.5 text-xs text-muted">{error}</p>
+      {supported && errorCode && (
+        <p className="mt-1.5 text-xs text-muted">
+          {t.voice.errors[errorCode] ?? t.voice.errors.other}
+        </p>
       )}
       {!supported && (
         <p className="mt-1.5 text-xs text-muted">
-          Voice input isn&apos;t supported in this browser — you can type instead.
+          {t.voice.unsupported}
         </p>
       )}
     </div>

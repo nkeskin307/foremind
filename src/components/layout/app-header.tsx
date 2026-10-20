@@ -9,6 +9,8 @@ import { MicIcon } from "@/components/icons/mic-icon";
 import { RotateIcon } from "@/components/icons/rotate-icon";
 import { HomeIcon } from "@/components/icons/home-icon";
 import { useCaddieContext } from "@/lib/caddie/caddie-context";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { LanguageMenuItems } from "@/components/i18n/language-switcher";
 import {
   getActiveRoundSnapshot,
   clearActiveRound,
@@ -27,6 +29,7 @@ export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const { openPanel } = useCaddieContext();
+  const { t } = useI18n();
 
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasActiveRound, setHasActiveRound] = useState(false);
@@ -73,7 +76,10 @@ export function AppHeader() {
 
   return (
     <>
-      <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
+      {/* No backdrop-blur: it would make the header the containing block for
+          the menu's fixed "tap outside to close" layer, so taps below the
+          header wouldn't close the menu. */}
+      <header className="sticky top-0 z-30 border-b border-border bg-background">
         <div className="mx-auto flex w-full max-w-md items-center justify-between gap-3 px-6 py-4">
           <div className="flex items-center gap-2">
             <button
@@ -82,7 +88,7 @@ export function AppHeader() {
               className="flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
             >
               <ArrowLeftIcon className="h-4 w-4" />
-              Back
+              {t.common.back}
             </button>
 
             <div className="relative">
@@ -93,7 +99,7 @@ export function AppHeader() {
                 aria-haspopup="menu"
                 className="flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground"
               >
-                Session
+                {t.header.session}
                 <ChevronDownIcon className="h-3.5 w-3.5" />
               </button>
 
@@ -102,7 +108,7 @@ export function AppHeader() {
                   <div className="fixed inset-0 z-20" onClick={closeMenu} />
                   <div
                     role="menu"
-                    className="motion-fade absolute left-0 top-full z-40 mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-surface py-1 shadow-xl shadow-black/30"
+                    className="motion-fade absolute left-0 top-full z-40 mt-2 max-h-[70vh] w-56 overflow-y-auto rounded-2xl border border-border bg-surface py-1 shadow-xl shadow-black/30"
                   >
                     {hasActiveRound && (
                       <button
@@ -114,8 +120,8 @@ export function AppHeader() {
                         }}
                         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
                       >
-                        <RotateIcon className="h-3.5 w-3.5 text-sage" />
-                        Restart Round
+                        <RotateIcon className="h-3.5 w-3.5 shrink-0 text-sage" />
+                        {t.header.restartRound}
                       </button>
                     )}
                     <button
@@ -127,8 +133,8 @@ export function AppHeader() {
                       }}
                       className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
                     >
-                      <RotateIcon className="h-3.5 w-3.5 text-sage" />
-                      Start Over
+                      <RotateIcon className="h-3.5 w-3.5 shrink-0 text-sage" />
+                      {t.header.startOver}
                     </button>
                     {pathname === "/mental-game" && (
                       <Link
@@ -146,10 +152,11 @@ export function AppHeader() {
                         }}
                         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
                       >
-                        <HomeIcon className="h-3.5 w-3.5 text-sage" />
-                        End Session
+                        <HomeIcon className="h-3.5 w-3.5 shrink-0 text-sage" />
+                        {t.header.endSession}
                       </Link>
                     )}
+                    <LanguageMenuItems onPick={closeMenu} />
                   </div>
                 </>
               )}
@@ -159,16 +166,16 @@ export function AppHeader() {
           <button
             type="button"
             onClick={openPanel}
-            aria-label="Ask My Caddie"
+            aria-label={t.header.askCaddie}
             className="caddie-glow hidden items-center gap-2 rounded-full bg-forest px-5 py-2.5 text-sm font-semibold text-foreground hover:bg-forest-light sm:inline-flex"
           >
             <MicIcon className="h-4 w-4" />
-            Ask My Caddie
+            {t.header.askCaddie}
           </button>
           <button
             type="button"
             onClick={openPanel}
-            aria-label="Ask My Caddie"
+            aria-label={t.header.askCaddie}
             className="caddie-glow flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-forest text-foreground hover:bg-forest-light sm:hidden"
           >
             <MicIcon className="h-4 w-4" />
@@ -192,12 +199,10 @@ export function AppHeader() {
               id="session-confirm-heading"
               className="text-base font-semibold text-foreground"
             >
-              {confirmAction === "restart-round" ? "Restart this round?" : "Start over?"}
+              {confirmAction === "restart-round" ? t.header.restartTitle : t.header.startOverTitle}
             </h2>
             <p className="mt-2 text-sm text-muted">
-              {confirmAction === "restart-round"
-                ? "This will discard your current unfinished round and take you back to Play setup. Your completed round history won't be affected."
-                : "This will clear your current unfinished session and take you back to the homepage. Your completed round history and Caddie history won't be affected."}
+              {confirmAction === "restart-round" ? t.header.restartBody : t.header.startOverBody}
             </p>
             <div className="mt-6 flex gap-3">
               <button
@@ -205,14 +210,14 @@ export function AppHeader() {
                 onClick={() => setConfirmAction(null)}
                 className="flex-1 rounded-full border border-border bg-background px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:border-forest"
               >
-                Cancel
+                {t.common.cancel}
               </button>
               <button
                 type="button"
                 onClick={handleConfirm}
                 className="flex-1 rounded-full bg-forest px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
               >
-                {confirmAction === "restart-round" ? "Restart Round" : "Start Over"}
+                {confirmAction === "restart-round" ? t.header.restartRound : t.header.startOver}
               </button>
             </div>
           </div>

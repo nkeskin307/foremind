@@ -1,5 +1,9 @@
 export const runtime = "nodejs";
 
+import { getMessages, stateLabel } from "@/lib/i18n";
+import { formatList } from "@/lib/i18n/format";
+import { getLanguageInfo, toAppLanguage, type AppLanguage } from "@/lib/i18n/languages";
+
 // Same model as /api/caddie. Kept as a separate constant (rather than a
 // shared import) so this route stays fully self-contained and never risks
 // touching the existing Caddie route's behavior.
@@ -20,6 +24,7 @@ Rules:
 - Keep the tone supportive, practical, and golf-specific.
 - Do not give technical swing advice — this is about the mental game only.
 - Write each section as plain text only — no markdown, no asterisks, no bullet points.
+- If Proactive Caddie reset cards are listed, you may mention how the golfer responded and what the next scored hole looked like, but describe it as something that "followed" or "came after" the card — never claim the card caused a result.
 - Respond only with the requested JSON structure.`;
 
 const RESPONSE_SCHEMA = {
@@ -48,6 +53,48 @@ type AnalysisResult = AnalysisFields & {
   source: "ai" | "fallback";
 };
 
+type ParsedIntervention = {
+  hole: number;
+  trigger: string;
+  reason: string;
+  outcome: string;
+  nextHole: number | null;
+  nextHoleToPar: number | null;
+};
+
+const TRIGGER_LABELS: Record<string, string> = {
+  "negative-streak": "negative mental state on two holes in a row",
+  "blow-up": "a hole at par +2 or worse",
+  "rough-start": "double bogey or worse on hole 1",
+  "low-confidence-start": "low pre-round confidence and an over-par first hole",
+};
+
+const OUTCOME_LABELS: Record<string, string> = {
+  opened: "opened the Caddie to talk",
+  dismissed: "tapped Got it",
+  ignored: "did not respond to it",
+};
+
+function parseInterventions(value: unknown): ParsedIntervention[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item): ParsedIntervention[] => {
+    if (!item || typeof item !== "object") return [];
+    const raw = item as Record<string, unknown>;
+    const hole = toNumberOrNull(raw.hole);
+    if (hole === null || typeof raw.trigger !== "string") return [];
+    return [
+      {
+        hole,
+        trigger: raw.trigger,
+        reason: typeof raw.reason === "string" ? raw.reason : "",
+        outcome: typeof raw.outcome === "string" ? raw.outcome : "ignored",
+        nextHole: toNumberOrNull(raw.nextHole),
+        nextHoleToPar: toNumberOrNull(raw.nextHoleToPar),
+      },
+    ];
+  });
+}
+
 type ParsedRound = {
   course: string;
   holes: number;
@@ -59,6 +106,7 @@ type ParsedRound = {
   total: number;
   totalPar: number;
   holesScored: number;
+  interventions: ParsedIntervention[];
   preRound: {
     focus: number | null;
     energy: number | null;
@@ -84,11 +132,6 @@ function toNumberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function formatHoleList(holes: number[]): string {
-  if (holes.length === 1) return `${holes[0]}`;
-  if (holes.length === 2) return `${holes[0]} and ${holes[1]}`;
-  return `${holes.slice(0, -1).join(", ")}, and ${holes[holes.length - 1]}`;
-}
 
 function parseRoundForAnalysis(value: unknown): ParsedRound | null {
   if (!value || typeof value !== "object") return null;
@@ -143,6 +186,7 @@ function parseRoundForAnalysis(value: unknown): ParsedRound | null {
     total,
     totalPar,
     holesScored,
+    interventions: parseInterventions(raw.interventions),
     preRound: {
       focus: toNumberOrNull(preRoundRaw.focus),
       energy: toNumberOrNull(preRoundRaw.energy),
@@ -213,6 +257,30 @@ function buildAnalysisPrompt(round: ParsedRound): string {
   });
 
   lines.push("");
+  lines.push("PROACTIVE CADDIE RESET CARDS:");
+  if (round.interventions.length === 0) {
+    lines.push("- None were shown this round.");
+  } else {
+    for (const card of round.interventions) {
+      const next =
+        card.nextHole !== null && card.nextHoleToPar !== null
+          ? `next scored hole ${card.nextHole} was ${
+              card.nextHoleToPar === 0
+                ? "even par"
+                : card.nextHoleToPar > 0
+                  ? `+${card.nextHoleToPar}`
+                  : `${card.nextHoleToPar}`
+            }`
+          : "no later hole was scored";
+      lines.push(
+        `- Hole ${card.hole}: shown for ${TRIGGER_LABELS[card.trigger] ?? card.trigger}${
+          card.reason ? ` (${card.reason})` : ""
+        }; golfer ${OUTCOME_LABELS[card.outcome] ?? "did not respond to it"}; ${next}.`,
+      );
+    }
+  }
+
+  lines.push("");
   lines.push("POST-ROUND REFLECTION:");
   lines.push(`- What worked well mentally: "${round.reflection.whatWorked || "(not answered)"}"`);
   lines.push(`- What got in their head: "${round.reflection.whatGotInHead || "(not answered)"}"`);
@@ -223,7 +291,10 @@ function buildAnalysisPrompt(round: ParsedRound): string {
   return lines.join("\n");
 }
 
-function buildFallbackAnalysis(round: ParsedRound): AnalysisResult {
+/** Data-only analysis (no AI), written in the app language. */
+function buildFallbackAnalysis(round: ParsedRound, lang: AppLanguage): AnalysisResult {
+  const t = getMessages(lang).analysis;
+  const messages = getMessages(lang);
   const holesByState = new Map<string, number[]>();
   round.mentalNotes.forEach((state, index) => {
     if (state) {
@@ -235,25 +306,27 @@ function buildFallbackAnalysis(round: ParsedRound): AnalysisResult {
 
   const whatHelped = round.reflection.whatWorked
     ? round.reflection.whatWorked
-    : "No specific mental wins were noted for this round.";
+    : t.fallbackNoWins;
 
   const whatGotInYourWay = round.reflection.whatGotInHead
     ? round.reflection.whatGotInHead
     : holesByState.size > 0
-      ? `${[...holesByState.keys()].join(", ")} showed up during the round.`
-      : "Nothing specific was noted as getting in the way this round.";
+      ? t.fallbackStatesShowedUp(
+          formatList([...holesByState.keys()].map((state) => stateLabel(messages, state)), lang),
+        )
+      : t.fallbackNothingInWay;
 
-  let patternToWatch = "Not enough data from this round to identify a repeating pattern.";
+  let patternToWatch = t.fallbackNoPattern;
   for (const [state, holes] of holesByState) {
     if (holes.length >= 2) {
-      patternToWatch = `${state} appeared on Holes ${formatHoleList(holes)}.`;
+      patternToWatch = t.fallbackStateOnHoles(stateLabel(messages, state), formatList(holes, lang));
       break;
     }
   }
 
   const takeIntoNextRound = round.reflection.whatToRemember
     ? round.reflection.whatToRemember
-    : "Set one clear intention to carry into your next round.";
+    : t.fallbackIntention;
 
   return {
     whatHelped,
@@ -364,7 +437,8 @@ export async function POST(request: Request) {
     return Response.json({ error: "Round data is required." }, { status: 400 });
   }
 
-  const fallback = buildFallbackAnalysis(round);
+  const lang = toAppLanguage((body as { language?: unknown }).language) ?? "en";
+  const fallback = buildFallbackAnalysis(round, lang);
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -373,7 +447,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    const promptText = buildAnalysisPrompt(round);
+    const languageName = getLanguageInfo(lang).englishName;
+    // Section keys stay in English (JSON schema); the text is in the golfer's language.
+    const promptText = `${buildAnalysisPrompt(round)}\n\nWrite all four sections in ${languageName}. Use golf terms the way ${languageName}-speaking golfers say them (par, bogey, birdie, double bogey). Translate mental-state names naturally.`;
     const fields = await fetchGeminiAnalysis(apiKey, promptText);
 
     if (!fields) {

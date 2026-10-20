@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { getCaddieLanguageSnapshot } from "@/lib/speech/caddie-language";
+import { getLanguageInfo } from "@/lib/i18n/languages";
+import { getLanguageSnapshot } from "@/lib/i18n/language-store";
 
 function subscribeToNothing() {
   return () => {};
@@ -29,7 +30,7 @@ export type SpeechEndInfo = {
 };
 
 type SpeechOptions = {
-  /** Defaults to the saved Caddie language. */
+  /** Defaults to the app language. */
   lang?: string;
   /** true (default): keep listening until stopped. false: end after one utterance. */
   continuous?: boolean;
@@ -37,27 +38,8 @@ type SpeechOptions = {
   onEnd?: (info: SpeechEndInfo) => void;
 };
 
-export function describeSpeechError(code: string): string | null {
-  switch (code) {
-    case "aborted":
-      return null;
-    case "not-allowed":
-    case "service-not-allowed":
-      return "Microphone access is blocked. Allow the microphone for this site in your browser settings, or type instead.";
-    case "audio-capture":
-      return "No microphone was found. You can type instead.";
-    case "network":
-      return "Voice input needs an internet connection. You can type instead.";
-    case "no-speech":
-      return "I didn't hear anything. Tap the mic and try again.";
-    case "language-not-supported":
-      return "Voice input isn't available for this language in this browser. You can type instead.";
-    case "start-failed":
-      return "Couldn't start the microphone. Tap the mic to try again, or type instead.";
-    default:
-      return "Voice input stopped unexpectedly. You can type instead.";
-  }
-}
+/** Codes that should not be shown to the golfer. */
+const SILENT_ERRORS = new Set(["aborted"]);
 
 export function useSpeechRecognition(
   onFinalTranscript: (transcript: string) => void,
@@ -82,7 +64,8 @@ export function useSpeechRecognition(
     getServerSupportedSnapshot,
   );
   const [isListening, setIsListening] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // A code ("not-allowed", "no-speech", …); screens translate it via t.voice.errors.
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   const releaseActiveSession = useCallback(() => {
     if (activeSession && activeSession === ownerRef.current) activeSession = null;
@@ -116,13 +99,13 @@ export function useSpeechRecognition(
     }
   }, []);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => setErrorCode(null), []);
 
   const start = useCallback((): boolean => {
     const SpeechRecognitionCtor =
       window.SpeechRecognition ?? window.webkitSpeechRecognition;
     if (!SpeechRecognitionCtor) {
-      setError("Voice input isn't supported in this browser — you can type instead.");
+      setErrorCode("unsupported");
       return false;
     }
 
@@ -136,7 +119,7 @@ export function useSpeechRecognition(
     let errorCode: string | null = null;
 
     const recognition = new SpeechRecognitionCtor();
-    recognition.lang = optionsRef.current.lang ?? getCaddieLanguageSnapshot();
+    recognition.lang = optionsRef.current.lang ?? getLanguageInfo(getLanguageSnapshot()).locale;
     recognition.interimResults = false;
     recognition.continuous = optionsRef.current.continuous ?? true;
 
@@ -163,8 +146,7 @@ export function useSpeechRecognition(
     recognition.onerror = (event) => {
       if (!isCurrent()) return;
       errorCode = event.error;
-      const message = describeSpeechError(event.error);
-      if (message) setError(message);
+      if (!SILENT_ERRORS.has(event.error)) setErrorCode(event.error);
     };
 
     recognition.onend = () => {
@@ -179,7 +161,7 @@ export function useSpeechRecognition(
     ownerRef.current = owner;
     activeSession = owner;
     recognitionRef.current = recognition;
-    setError(null);
+    setErrorCode(null);
 
     try {
       recognition.start();
@@ -195,11 +177,11 @@ export function useSpeechRecognition(
         startError instanceof DOMException && startError.name === "NotAllowedError"
           ? "not-allowed"
           : "start-failed";
-      setError(describeSpeechError(code));
+      setErrorCode(code);
       optionsRef.current.onEnd?.({ heardSomething: false, errorCode: code });
       return false;
     }
   }, [abort, releaseActiveSession]);
 
-  return { supported, isListening, error, start, stop, abort, clearError };
+  return { supported, isListening, errorCode, start, stop, abort, clearError };
 }

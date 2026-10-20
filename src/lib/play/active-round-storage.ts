@@ -6,6 +6,7 @@ import {
   type HoleScore,
   type PreRoundCheckIn,
 } from "@/lib/play/round-data";
+import { normalizeInterventions, type Intervention } from "@/lib/play/interventions";
 
 export type ActiveRoundRecord = {
   id: string;
@@ -17,6 +18,9 @@ export type ActiveRoundRecord = {
   pars: number[];
   mentalNotes: (string | null)[];
   preRound: PreRoundCheckIn;
+  interventions: Intervention[];
+  /** "Stop interruptions for this round" — Proactive Caddie off until the round ends. */
+  proactiveCaddieOff: boolean;
 };
 
 const STORAGE_KEY = "foremind:active-round";
@@ -75,6 +79,8 @@ export function parseActiveRoundSnapshot(raw: string): ActiveRoundRecord | null 
       pars: normalizePars((parsed as { pars?: unknown }).pars, holes),
       mentalNotes: normalizeMentalNotes(parsed.mentalNotes, holes),
       preRound: parsePreRound(parsed.preRound),
+      interventions: normalizeInterventions((parsed as { interventions?: unknown }).interventions),
+      proactiveCaddieOff: (parsed as { proactiveCaddieOff?: unknown }).proactiveCaddieOff === true,
       currentHole: Math.min(Math.max(0, Math.floor(parsed.currentHole)), holes - 1),
     };
   } catch {

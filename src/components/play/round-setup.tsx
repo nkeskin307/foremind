@@ -9,10 +9,12 @@ import { getRoundsSnapshot, parseRoundsSnapshot } from "@/lib/mental-game/comple
 import {
   buildCourseHistories,
   findCourseHistory,
-  formatRoundDate,
   normalizeCourseName,
   type CourseHistory,
 } from "@/lib/mental-game/course-history";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { stateLabel } from "@/lib/i18n";
+import { formatDate } from "@/lib/i18n/format";
 import {
   clearActiveRound,
   getActiveRoundSnapshot,
@@ -41,40 +43,39 @@ function getServerRoundsSnapshot() {
 const MAX_COURSE_SUGGESTIONS = 5;
 
 function LastTimeCard({ history }: { history: CourseHistory }) {
+  const { lang, t } = useI18n();
   const last = history.rounds[0];
   const topState = last.topStates[0];
   return (
     <div className="motion-fade mt-4 rounded-2xl border border-border bg-surface px-4 py-3">
       <p className="text-xs font-semibold uppercase tracking-wide text-sage">
-        Last time at {history.displayName}
+        {t.setup.lastTimeAt(history.displayName)}
       </p>
       <p className="mt-1 text-xs text-muted">
-        {formatRoundDate(last.date)} · {last.holes} Holes
-        {history.rounds.length > 1 ? ` · ${history.rounds.length} rounds here` : ""}
+        {formatDate(last.date, lang, t.common.unknownDate)} · {t.common.holesCount(last.holes)}
+        {history.rounds.length > 1 ? ` · ${t.setup.roundsHere(history.rounds.length)}` : ""}
       </p>
       <p className="mt-2 text-sm text-foreground">
         {last.holesScored > 0
           ? `${last.total} (${formatToPar(last.toPar)})${
               last.holesScored < last.holes
-                ? ` · ${last.holesScored} of ${last.holes} holes scored`
+                ? ` · ${t.setup.holesScoredOf(last.holesScored, last.holes)}`
                 : ""
             }`
-          : "No holes were scored."}
+          : t.setup.noHolesScored}
       </p>
       <p className="mt-1 text-sm text-foreground">
         {topState
-          ? `Most common mental state: ${topState.state} (${topState.count} hole${
-              topState.count === 1 ? "" : "s"
-            })`
-          : "No mental states logged."}
+          ? t.setup.mostCommonState(stateLabel(t, topState.state), topState.count)
+          : t.setup.noStates}
       </p>
       {last.whatToRemember ? (
         <p className="mt-2 text-sm text-foreground">
-          <span className="text-muted">You wanted to remember: </span>
+          <span className="text-muted">{t.setup.rememberLabel} </span>
           &ldquo;{last.whatToRemember}&rdquo;
         </p>
       ) : (
-        <p className="mt-2 text-xs text-muted">No reflection was saved for that round.</p>
+        <p className="mt-2 text-xs text-muted">{t.setup.noReflection}</p>
       )}
     </div>
   );
@@ -90,6 +91,7 @@ function hasCheckInData(checkIn: PreRoundCheckIn): boolean {
 }
 
 export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
+  const { t } = useI18n();
   const [course, setCourse] = useState("");
   const [holes, setHoles] = useState<HoleCount>(18);
   const [round, setRound] = useState<{ course: string; holes: HoleCount } | null>(
@@ -182,17 +184,18 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
         <div className="relative mx-auto w-full max-w-md px-6 py-16">
           <h1 className="motion-heading flex items-center gap-2.5 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             <FlagIcon className="h-6 w-6 text-sage" />
-            Unfinished round
+            {t.setup.unfinishedTitle}
           </h1>
           <div className="motion-body">
             <p className="mt-2 text-base text-muted">
-              You have an unfinished round at {resumedRound.course || "your course"} (hole{" "}
-              {resumedRound.currentHole + 1} of {resumedRound.holes}). Resume your
-              unfinished round or start a new one?
+              {t.setup.unfinishedBody(
+                resumedRound.course || t.setup.yourCourse,
+                resumedRound.currentHole + 1,
+                resumedRound.holes,
+              )}
             </p>
             <p className="mt-2 text-xs text-muted">
-              Starting a new round discards the unfinished one and uses today&apos;s
-              check-in.
+              {t.setup.unfinishedNote}
             </p>
 
             <button
@@ -200,14 +203,14 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
               onClick={handleResume}
               className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
             >
-              Resume Round
+              {t.setup.resume}
             </button>
             <button
               type="button"
               onClick={handleStartNew}
               className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-border bg-surface px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:border-forest"
             >
-              Start New Round
+              {t.setup.startNew}
             </button>
           </div>
         </div>
@@ -248,29 +251,29 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
       <div className="relative mx-auto w-full max-w-md px-6 py-16">
       <h1 className="motion-heading flex items-center gap-2.5 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
         <FlagIcon className="h-6 w-6 text-sage" />
-        Let&apos;s play.
+        {t.setup.title}
       </h1>
       <div className="motion-body">
       <p className="mt-2 text-base text-muted">
-        Set up your round and stay focused on the game in front of you.
+        {t.setup.subtitle}
       </p>
 
       <div className="mt-8">
         <label htmlFor="course" className="text-sm font-medium text-foreground">
-          Course
+          {t.setup.course}
         </label>
         <input
           id="course"
           type="text"
           value={course}
           onChange={(event) => setCourse(event.target.value)}
-          placeholder="Enter course name"
+          placeholder={t.setup.coursePlaceholder}
           className="mt-2 w-full rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
         />
 
         {courseSuggestions.length > 0 && (
           <div className="mt-3">
-            <p className="text-xs text-muted">Courses you&apos;ve played</p>
+            <p className="text-xs text-muted">{t.setup.coursesPlayed}</p>
             <div className="mt-1.5 flex flex-wrap gap-2">
               {courseSuggestions.map((history) => (
                 <button
@@ -290,7 +293,7 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
       </div>
 
       <div className="mt-6">
-        <span className="text-sm font-medium text-foreground">Holes</span>
+        <span className="text-sm font-medium text-foreground">{t.setup.holes}</span>
         <div className="mt-2 flex gap-2">
           {([9, 18] as HoleCount[]).map((count) => {
             const isSelected = holes === count;
@@ -306,7 +309,7 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
                     : "border-border bg-surface text-muted hover:border-forest"
                 }`}
               >
-                {count} Holes
+                {t.common.holesCount(count)}
               </button>
             );
           })}
@@ -319,7 +322,7 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
         disabled={!isValid}
         className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light disabled:opacity-40 disabled:hover:bg-forest"
       >
-        Begin Round →
+        {t.setup.begin}
       </button>
       </div>
       </div>

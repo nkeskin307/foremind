@@ -4,19 +4,9 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { usePathname } from "next/navigation";
 import { MicIcon } from "@/components/icons/mic-icon";
 import { HistoryIcon } from "@/components/icons/history-icon";
-import {
-  describeSpeechError,
-  useSpeechRecognition,
-  type SpeechEndInfo,
-} from "@/lib/speech/use-speech-recognition";
-import {
-  CADDIE_LANGUAGES,
-  findCaddieLanguage,
-  getCaddieLanguageSnapshot,
-  getServerCaddieLanguageSnapshot,
-  setCaddieLanguage,
-  subscribeToCaddieLanguage,
-} from "@/lib/speech/caddie-language";
+import { useSpeechRecognition, type SpeechEndInfo } from "@/lib/speech/use-speech-recognition";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { formatDateTime } from "@/lib/i18n/format";
 import {
   isSpeechSynthesisSupported,
   primeSpeechSynthesis,
@@ -39,18 +29,11 @@ import {
   type CaddieCourseHistory,
 } from "@/lib/mental-game/course-history";
 
-const FALLBACK_ERROR_MESSAGE =
-  "The Mental Caddie couldn't respond right now. Please try again in a moment.";
 
 const MAX_HISTORY_ROUNDS = 5;
 
 type HandsFreePhase = "idle" | "listening" | "thinking" | "speaking";
 
-const PHASE_LABELS: Record<Exclude<HandsFreePhase, "idle">, string> = {
-  listening: "Listening…",
-  thinking: "Thinking…",
-  speaking: "Speaking…",
-};
 
 type AskResult = { ok: boolean; text: string };
 
@@ -80,17 +63,6 @@ function logCaddieLocalStorageDebugInfo(completedRounds: CompletedRound[]): void
   });
 }
 
-function formatLogTimestamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 export function MentalCaddie() {
   const pathname = usePathname();
   const [message, setMessage] = useState("");
@@ -98,12 +70,8 @@ export function MentalCaddie() {
   const [isLoading, setIsLoading] = useState(false);
   const [view, setView] = useState<"ask" | "history">("ask");
 
-  const languageCode = useSyncExternalStore(
-    subscribeToCaddieLanguage,
-    getCaddieLanguageSnapshot,
-    getServerCaddieLanguageSnapshot,
-  );
-  const language = findCaddieLanguage(languageCode) ?? CADDIE_LANGUAGES[0];
+  // One app-wide language drives the UI, speech recognition, read-aloud and replies.
+  const { lang, t, info } = useI18n();
   const ttsSupported = useSyncExternalStore(
     subscribeToNothing,
     isSpeechSynthesisSupported,
@@ -115,7 +83,7 @@ export function MentalCaddie() {
     (transcript) => {
       setMessage((prev) => (prev ? `${prev} ${transcript}` : transcript));
     },
-    { lang: language.code },
+    { lang: info.locale },
   );
 
   // Hands-Free: one utterance per turn, sent when the golfer stops talking.
@@ -135,7 +103,7 @@ export function MentalCaddie() {
       setHeardText(heardRef.current);
     },
     {
-      lang: language.code,
+      lang: info.locale,
       continuous: false,
       onEnd: (info) => {
         void handleHandsFreeHeard(info);
@@ -202,7 +170,7 @@ export function MentalCaddie() {
           context,
           history,
           courseHistory,
-          language: language.code,
+          language: lang,
           mode,
         }),
         signal: controller.signal,
@@ -211,7 +179,7 @@ export function MentalCaddie() {
       const data = await res.json();
 
       if (!res.ok || typeof data.response !== "string") {
-        const errorText = typeof data.error === "string" ? data.error : FALLBACK_ERROR_MESSAGE;
+        const errorText = res.status === 503 ? t.caddie.busy : t.caddie.unavailable;
         setResponse(errorText);
         return { ok: false, text: errorText };
       }
@@ -227,8 +195,8 @@ export function MentalCaddie() {
     } catch {
       // Aborted (Stop / panel closed) — stay quiet.
       if (controller.signal.aborted) return { ok: false, text: "" };
-      setResponse(FALLBACK_ERROR_MESSAGE);
-      return { ok: false, text: FALLBACK_ERROR_MESSAGE };
+      setResponse(t.caddie.unavailable);
+      return { ok: false, text: t.caddie.unavailable };
     } finally {
       if (fetchAbortRef.current === controller) {
         fetchAbortRef.current = null;
@@ -274,7 +242,7 @@ export function MentalCaddie() {
     setIsFollowUp(false);
   }
 
-  async function handleHandsFreeHeard(info: SpeechEndInfo) {
+  async function handleHandsFreeHeard(endInfo: SpeechEndInfo) {
     const run = activeRunRef.current;
     if (!run) return;
     const isStillRunning = () => activeRunRef.current === run;
@@ -283,15 +251,15 @@ export function MentalCaddie() {
     if (!text) {
       if (followUpUsedRef.current) {
         endHandsFree(
-          info.errorCode && info.errorCode !== "no-speech"
-            ? "Tap Hands-Free to ask a follow-up."
-            : "No follow-up heard — Hands-Free is off.",
+          endInfo.errorCode && endInfo.errorCode !== "no-speech"
+            ? t.caddie.noteTapForFollowUp
+            : t.caddie.noteNoFollowUp,
         );
       } else {
         endHandsFree(
-          info.errorCode && info.errorCode !== "no-speech"
-            ? describeSpeechError(info.errorCode)
-            : "I didn't hear anything. Tap Hands-Free to try again.",
+          endInfo.errorCode && endInfo.errorCode !== "no-speech"
+            ? (t.voice.errors[endInfo.errorCode] ?? t.voice.errors.other)
+            : t.caddie.noteDidntHear,
         );
       }
       return;
@@ -306,16 +274,14 @@ export function MentalCaddie() {
     }
 
     setHandsFreePhase("speaking");
-    const spoken = await speak(reply.text, language.code);
+    const spoken = await speak(reply.text, info.locale);
     if (!isStillRunning()) return;
     if (spoken === "unsupported") {
-      setHandsFreeNote("This browser can't read replies aloud, so the reply is shown below.");
+      setHandsFreeNote(t.caddie.noteNoReadAloud);
     } else if (spoken === "no-voice") {
-      setHandsFreeNote(
-        `No ${language.englishName} voice is installed on this device, so the reply is shown below.`,
-      );
+      setHandsFreeNote(t.caddie.noteNoVoice(info.label));
     } else if (spoken === "error") {
-      setHandsFreeNote("Couldn't read the reply aloud, so it's shown below.");
+      setHandsFreeNote(t.caddie.noteReadError);
     }
 
     if (!followUpUsedRef.current) {
@@ -323,7 +289,7 @@ export function MentalCaddie() {
       setIsFollowUp(true);
       listenHandsFree();
     } else {
-      endHandsFree("Hands-Free is off. Tap it again to ask more.");
+      endHandsFree(t.caddie.noteOff);
     }
   }
 
@@ -372,28 +338,13 @@ export function MentalCaddie() {
                   id="mental-caddie-heading"
                   className="text-lg font-semibold text-foreground"
                 >
-                  Your Mental Caddie
+                  {t.caddie.title}
                 </h2>
-                <p className="mt-1 text-sm text-muted">What&apos;s going on?</p>
-                <label className="mt-2 flex items-center gap-2 text-xs text-muted">
-                  Voice language
-                  <select
-                    value={language.code}
-                    onChange={(event) => setCaddieLanguage(event.target.value)}
-                    disabled={handsFreeActive || dictation.isListening}
-                    className="rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground focus:border-forest focus:outline-none disabled:opacity-60"
-                  >
-                    {CADDIE_LANGUAGES.map((option) => (
-                      <option key={option.code} value={option.code}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <p className="mt-1 text-sm text-muted">{t.caddie.subtitle}</p>
                 {history.length > 0 && (
                   <p className="motion-fade mt-1 flex items-center gap-1 text-xs text-sage">
                     <HistoryIcon className="h-3.5 w-3.5" />
-                    Remembering {history.length} past round{history.length === 1 ? "" : "s"}
+                    {t.caddie.remembering(history.length)}
                   </p>
                 )}
               </div>
@@ -402,7 +353,8 @@ export function MentalCaddie() {
                   type="button"
                   onClick={() => setView((current) => (current === "ask" ? "history" : "ask"))}
                   aria-pressed={view === "history"}
-                  title={view === "history" ? "Back to Ask" : "History"}
+                  title={view === "history" ? t.caddie.backToAsk : t.caddie.history}
+                  aria-label={view === "history" ? t.caddie.backToAsk : t.caddie.history}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-sage-soft hover:text-foreground"
                 >
                   <HistoryIcon className="h-4 w-4" />
@@ -410,7 +362,7 @@ export function MentalCaddie() {
                 <button
                   type="button"
                   onClick={closeCaddie}
-                  aria-label="Close"
+                  aria-label={t.common.close}
                   className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-sage-soft hover:text-foreground"
                 >
                   ×
@@ -422,7 +374,7 @@ export function MentalCaddie() {
               <div className="motion-fade mt-5">
                 {caddieLog.length === 0 ? (
                   <p className="text-sm text-muted">
-                    Your conversations with Fore!Mind will show up here.
+                    {t.caddie.historyEmpty}
                   </p>
                 ) : (
                   <div className="max-h-80 space-y-2 overflow-y-auto">
@@ -432,9 +384,9 @@ export function MentalCaddie() {
                         className="rounded-2xl border border-border bg-background px-4 py-3"
                       >
                         <p className="text-xs text-muted">
-                          {formatLogTimestamp(entry.timestamp)}
+                          {formatDateTime(entry.timestamp, lang, t.common.unknownDate)}
                           {entry.course ? ` · ${entry.course}` : ""}
-                          {entry.hole ? ` · Hole ${entry.hole}` : ""}
+                          {entry.hole ? ` · ${t.common.hole(entry.hole)}` : ""}
                         </p>
                         <p className="mt-1.5 text-sm text-foreground">{entry.message}</p>
                         <p className="mt-1.5 text-sm text-sage">{entry.response}</p>
@@ -455,16 +407,16 @@ export function MentalCaddie() {
                         {handsFreePhase === "listening" && (
                           <span className="h-2.5 w-2.5 animate-pulse rounded-full bg-red-500" />
                         )}
-                        {PHASE_LABELS[handsFreePhase as Exclude<HandsFreePhase, "idle">]}
+                        {t.caddie.phases[handsFreePhase as Exclude<HandsFreePhase, "idle">]}
                       </p>
                       <p className="mt-2 text-xs text-muted">
                         {handsFreePhase === "listening"
                           ? isFollowUp
-                            ? "Any follow-up? I'll send it when you stop talking."
-                            : "Ask your question — I'll send it when you stop talking."
+                            ? t.caddie.hintFollowUp
+                            : t.caddie.hintListening
                           : handsFreePhase === "thinking"
-                            ? "Your caddie is thinking."
-                            : "Reading the reply aloud."}
+                            ? t.caddie.hintThinking
+                            : t.caddie.hintSpeaking}
                       </p>
                       {heardText && (
                         <p className="mt-3 text-sm text-foreground">&ldquo;{heardText}&rdquo;</p>
@@ -475,7 +427,7 @@ export function MentalCaddie() {
                       onClick={stopHandsFree}
                       className="mt-4 inline-flex w-full items-center justify-center rounded-full border border-border bg-background px-6 py-4 text-base font-semibold text-foreground transition-colors hover:border-forest"
                     >
-                      Stop
+                      {t.common.stop}
                     </button>
                   </>
                 ) : (
@@ -487,26 +439,25 @@ export function MentalCaddie() {
                       className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-full bg-forest px-6 py-4 text-base font-semibold text-foreground transition-colors hover:bg-forest-light disabled:opacity-40 disabled:hover:bg-forest"
                     >
                       <MicIcon className="h-5 w-5" />
-                      Hands-Free
+                      {t.caddie.handsFree}
                     </button>
                     {!handsFreeMic.supported ? (
                       <p className="mt-1.5 text-xs text-muted">
-                        Hands-Free needs voice input, which this browser doesn&apos;t support. Type
-                        your question below instead.
+                        {t.caddie.handsFreeUnsupported}
                       </p>
                     ) : !ttsSupported ? (
                       <p className="mt-1.5 text-xs text-muted">
-                        This browser can&apos;t read replies aloud — replies will appear as text.
+                        {t.caddie.ttsUnsupported}
                       </p>
                     ) : null}
-                    <p className="mt-4 text-center text-xs text-muted">or type your question</p>
+                    <p className="mt-4 text-center text-xs text-muted">{t.caddie.orType}</p>
 
                     <div className="relative mt-2">
                       <input
                         type="text"
                         value={message}
                         onChange={(event) => setMessage(event.target.value)}
-                        placeholder="I can't stop thinking about my last hole…"
+                        placeholder={t.caddie.placeholder}
                         className="w-full rounded-2xl border border-border bg-background px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
                       />
                       {dictation.supported && (
@@ -514,7 +465,8 @@ export function MentalCaddie() {
                           type="button"
                           onClick={dictation.isListening ? dictation.stop : () => dictation.start()}
                           aria-pressed={dictation.isListening}
-                          title={dictation.isListening ? "Stop listening" : "Speak to your caddie"}
+                          title={dictation.isListening ? t.voice.stopListening : t.caddie.speakToCaddie}
+                          aria-label={dictation.isListening ? t.voice.stopListening : t.caddie.speakToCaddie}
                           className={`absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border transition-colors ${
                             dictation.isListening
                               ? "border-forest bg-forest text-foreground"
@@ -530,10 +482,12 @@ export function MentalCaddie() {
                     </div>
 
                     {dictation.supported && dictation.isListening && (
-                      <p className="mt-1.5 text-xs text-sage">Listening… tap the mic to stop.</p>
+                      <p className="mt-1.5 text-xs text-sage">{t.voice.listening}</p>
                     )}
-                    {dictation.error && (
-                      <p className="mt-1.5 text-xs text-muted">{dictation.error}</p>
+                    {dictation.errorCode && (
+                      <p className="mt-1.5 text-xs text-muted">
+                        {t.voice.errors[dictation.errorCode] ?? t.voice.errors.other}
+                      </p>
                     )}
 
                     <button
@@ -542,7 +496,7 @@ export function MentalCaddie() {
                       disabled={isLoading || !message.trim()}
                       className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light disabled:opacity-60 disabled:hover:bg-forest"
                     >
-                      {isLoading ? "Asking…" : "Ask My Caddie"}
+                      {isLoading ? t.caddie.asking : t.caddie.ask}
                     </button>
                   </>
                 )}

@@ -15,9 +15,15 @@ import {
 } from "@/lib/mental-game/completed-rounds";
 import { formatToPar, summarizeScores } from "@/lib/play/round-data";
 import {
+  MIN_RECOVERY_CASES,
+  computeRecoveryStats,
+  type RecoveryStats,
+} from "@/lib/play/proactive-caddie";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { allNoDataPhrases, stateLabel, type Messages } from "@/lib/i18n";
+import { formatAverageToPar, formatDate, formatDateTime, formatDecimal } from "@/lib/i18n/format";
+import {
   buildCourseHistories,
-  formatAverageToPar,
-  formatRoundDate,
   type CourseHistory,
   type CourseRoundSummary,
   type ScoreSplit,
@@ -31,11 +37,6 @@ const RECENT_WINDOW = 5;
 
 const DIFFICULT_STATES = ["Frustrated", "Rushed", "Overthinking"];
 
-const FOCUS_HEADLINES: Record<string, string> = {
-  Frustrated: "Reset faster after mistakes.",
-  Rushed: "Slow your pace between shots.",
-  Overthinking: "Simplify your pre-shot routine.",
-};
 
 const THEME_KEYWORDS = [
   "frustrat",
@@ -78,19 +79,6 @@ function average(values: number[]): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
-
-function formatRoundCountLabel(count: number, total: number): string {
-  return `${count} of your last ${total} round${total === 1 ? "" : "s"}`;
-}
 
 function computeStateRoundCounts(rounds: CompletedRound[]): Map<string, number> {
   const counts = new Map<string, number>();
@@ -165,12 +153,7 @@ type Takeaway = { text: string; recurring: boolean };
 // enough data" for a section when a round is sparse. That's the right call
 // for the analysis text itself, but it reads as a confusing non-answer if
 // surfaced as if it were a personalized takeaway — so filter it out here.
-const NO_DATA_PHRASES = [
-  "not enough data",
-  "insufficient data",
-  "no repeating pattern",
-  "no clear pattern",
-];
+const NO_DATA_PHRASES = allNoDataPhrases();
 
 function hasMeaningfulContent(text: string): boolean {
   const lower = text.toLowerCase();
@@ -239,6 +222,7 @@ type CurrentFocus = { headline: string; detail: string };
 function buildCurrentFocus(
   recentRounds: CompletedRound[],
   stateRoundCounts: Map<string, number>,
+  t: Messages,
 ): CurrentFocus | null {
   const difficultCounts = new Map(
     [...stateRoundCounts].filter(([state]) => DIFFICULT_STATES.includes(state)),
@@ -247,11 +231,13 @@ function buildCurrentFocus(
 
   if (topDifficult && topDifficult.roundCount >= 2) {
     return {
-      headline: FOCUS_HEADLINES[topDifficult.state] ?? `Notice ${topDifficult.state.toLowerCase()} early.`,
-      detail: `${topDifficult.state} has appeared in ${formatRoundCountLabel(
-        topDifficult.roundCount,
-        recentRounds.length,
-      )}, so your next focus is creating a clean break before the next shot.`,
+      headline:
+        t.dashboard.focusHeadlines[topDifficult.state] ??
+        t.dashboard.focusHeadlineDefault(stateLabel(t, topDifficult.state)),
+      detail: t.dashboard.focusDetail(
+        stateLabel(t, topDifficult.state),
+        t.dashboard.roundCountLabel(topDifficult.roundCount, recentRounds.length),
+      ),
     };
   }
 
@@ -261,25 +247,26 @@ function buildCurrentFocus(
     round.reflection.whatToRemember,
   ]);
   if (reflectionThemes.length > 0) {
-    return { headline: "Watch this recurring theme.", detail: reflectionThemes[0].example };
+    return { headline: t.dashboard.watchTheme, detail: reflectionThemes[0].example };
   }
 
   const analyzedRounds = recentRounds.filter((round) => round.analysis);
   const latestTakeaway = analyzedRounds[0]?.analysis?.takeIntoNextRound;
   if (latestTakeaway && hasMeaningfulContent(latestTakeaway)) {
-    return { headline: "Carry this into your next round.", detail: latestTakeaway };
+    return { headline: t.dashboard.carryThis, detail: latestTakeaway };
   }
 
   return null;
 }
 
 function BaselineStat({ label, value }: { label: string; value: number | string | null }) {
+  const { t } = useI18n();
   return (
     <div className="card-hover rounded-2xl border border-border bg-surface px-3 py-4 text-center">
       {value !== null ? (
         <p className="text-2xl font-bold text-foreground">{value}</p>
       ) : (
-        <p className="text-xs text-muted">Not enough data yet</p>
+        <p className="text-xs text-muted">{t.dashboard.notEnoughData}</p>
       )}
       <p className="mt-1 text-xs text-muted">{label}</p>
     </div>
@@ -295,14 +282,17 @@ function AnalysisSection({ label, text }: { label: string; text: string }) {
   );
 }
 
-function formatRoundScore(round: { holesScored: number; holes: number; total: number; toPar: number }) {
-  if (round.holesScored === 0) return "Not scored";
+function formatRoundScore(
+  round: { holesScored: number; holes: number; total: number; toPar: number },
+  t: Messages,
+) {
+  if (round.holesScored === 0) return t.dashboard.notScored;
   const partial = round.holesScored < round.holes ? ` · ${round.holesScored}/${round.holes}` : "";
   return `${round.total} (${formatToPar(round.toPar)})${partial}`;
 }
 
-function formatSplit(split: ScoreSplit | null): string {
-  return split ? formatRoundScore(split) : "9-hole round";
+function formatSplit(split: ScoreSplit | null, t: Messages): string {
+  return split ? formatRoundScore(split, t) : t.dashboard.nineHoleRound;
 }
 
 function CompareRow({
@@ -325,15 +315,16 @@ function CompareRow({
   );
 }
 
-function formatTopStates(round: CourseRoundSummary): string {
-  if (round.topStates.length === 0) return "None logged";
+function formatTopStates(round: CourseRoundSummary, t: Messages): string {
+  if (round.topStates.length === 0) return t.dashboard.noneLogged;
   return round.topStates
     .slice(0, 2)
-    .map(({ state, count }) => `${state} (${count})`)
+    .map(({ state, count }) => `${stateLabel(t, state)} (${count})`)
     .join(", ");
 }
 
 function CourseCard({ history }: { history: CourseHistory }) {
+  const { lang, t } = useI18n();
   const roundCount = history.rounds.length;
   const [latest, previous] = history.rounds;
   const has18 = latest.holes === 18 || previous?.holes === 18;
@@ -344,66 +335,128 @@ function CourseCard({ history }: { history: CourseHistory }) {
         <div>
           <p className="text-sm font-medium text-foreground">{history.displayName}</p>
           <p className="mt-1 text-xs text-muted">
-            {roundCount} round{roundCount === 1 ? "" : "s"} played
+            {t.dashboard.roundsPlayedCount(roundCount)}
           </p>
         </div>
         <div className="shrink-0 text-right">
           <p className="text-sm font-semibold text-foreground">
-            {history.averageToPar !== null ? formatAverageToPar(history.averageToPar) : "—"}
+            {history.averageToPar !== null ? formatAverageToPar(history.averageToPar, lang) : "—"}
           </p>
-          <p className="text-xs text-muted">avg vs par</p>
+          <p className="text-xs text-muted">{t.dashboard.avgVsPar}</p>
         </div>
       </div>
 
       <p className="mt-2 text-xs text-muted">
         {history.stateRoundCounts.length > 0
-          ? `Mental states: ${history.stateRoundCounts
-              .slice(0, 3)
-              .map(({ state, count }) => `${state} (${count} of ${roundCount} rounds)`)
-              .join(", ")}`
-          : "No mental states logged here yet."}
+          ? t.dashboard.mentalStatesLine(
+              history.stateRoundCounts
+                .slice(0, 3)
+                .map(({ state, count }) =>
+                  t.dashboard.stateRounds(stateLabel(t, state), count, roundCount),
+                )
+                .join(", "),
+            )
+          : t.dashboard.noStatesHere}
       </p>
 
       {previous && (
         <div className="mt-3 border-t border-border pt-3">
           <div className="grid grid-cols-2 gap-x-4">
             <p className="text-xs font-semibold text-sage">
-              Latest · {formatRoundDate(latest.date)}
+              {t.dashboard.latest} · {formatDate(latest.date, lang, t.common.unknownDate)}
             </p>
             <p className="text-xs font-semibold text-sage">
-              Previous · {formatRoundDate(previous.date)}
+              {t.dashboard.previous} · {formatDate(previous.date, lang, t.common.unknownDate)}
             </p>
             <CompareRow
-              label="Score vs par"
-              latest={formatRoundScore(latest)}
-              previous={formatRoundScore(previous)}
+              label={t.dashboard.scoreVsPar}
+              latest={formatRoundScore(latest, t)}
+              previous={formatRoundScore(previous, t)}
             />
             {has18 && (
               <>
                 <CompareRow
-                  label="Front 9"
-                  latest={formatSplit(latest.front9)}
-                  previous={formatSplit(previous.front9)}
+                  label={t.dashboard.front9}
+                  latest={formatSplit(latest.front9, t)}
+                  previous={formatSplit(previous.front9, t)}
                 />
                 <CompareRow
-                  label="Back 9"
-                  latest={formatSplit(latest.back9)}
-                  previous={formatSplit(previous.back9)}
+                  label={t.dashboard.back9}
+                  latest={formatSplit(latest.back9, t)}
+                  previous={formatSplit(previous.back9, t)}
                 />
               </>
             )}
             <CompareRow
-              label="Top mental states (holes)"
-              latest={formatTopStates(latest)}
-              previous={formatTopStates(previous)}
+              label={t.dashboard.topStates}
+              latest={formatTopStates(latest, t)}
+              previous={formatTopStates(previous, t)}
             />
             <CompareRow
-              label="Takeaway"
-              latest={latest.whatToRemember || "No reflection saved"}
-              previous={previous.whatToRemember || "No reflection saved"}
+              label={t.dashboard.takeaway}
+              latest={latest.whatToRemember || t.dashboard.noReflectionSaved}
+              previous={previous.whatToRemember || t.dashboard.noReflectionSaved}
             />
           </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+function RecoveryValue({
+  label,
+  side,
+  showAverage,
+}: {
+  label: string;
+  side: RecoveryStats["afterCard"];
+  showAverage: boolean;
+}) {
+  const { lang, t } = useI18n();
+  return (
+    <div>
+      {showAverage && side.average !== null ? (
+        <p className="text-2xl font-bold text-foreground">{formatAverageToPar(side.average, lang)}</p>
+      ) : (
+        <p className="py-1.5 text-xs text-muted">{t.dashboard.notEnoughData}</p>
+      )}
+      <p className="mt-1 text-xs text-muted">{label}</p>
+      <p className="mt-0.5 text-[10px] text-muted">
+        {t.dashboard.cases(side.count)}
+      </p>
+    </div>
+  );
+}
+
+function RecoveryCard({ stats }: { stats: RecoveryStats }) {
+  const { t } = useI18n();
+  const enoughData =
+    stats.afterCard.count >= MIN_RECOVERY_CASES &&
+    stats.afterBadHoleNoCard.count >= MIN_RECOVERY_CASES;
+
+  return (
+    <div className="card-hover mt-3 rounded-2xl border border-border bg-surface px-4 py-4">
+      <p className="text-sm font-medium text-foreground">{t.dashboard.recoveryTitle}</p>
+      <p className="mt-1 text-xs text-muted">
+        {t.dashboard.recoverySubtitle}
+      </p>
+      <div className="mt-3 grid grid-cols-2 gap-3 text-center">
+        <RecoveryValue
+          label={t.dashboard.afterCard}
+          side={stats.afterCard}
+          showAverage={enoughData}
+        />
+        <RecoveryValue
+          label={t.dashboard.afterBadHole}
+          side={stats.afterBadHoleNoCard}
+          showAverage={enoughData}
+        />
+      </div>
+      {!enoughData && (
+        <p className="mt-3 text-xs text-muted">
+          {t.dashboard.recoveryNotEnough(MIN_RECOVERY_CASES)}
+        </p>
       )}
     </div>
   );
@@ -418,6 +471,7 @@ function RoundCard({
   isExpanded: boolean;
   onToggle: () => void;
 }) {
+  const { lang, t } = useI18n();
   const commonState = mostCommonStateInRound(round);
   const scoreSummary = summarizeScores(round.scores, round.pars);
   const hasReflection = Boolean(
@@ -434,11 +488,11 @@ function RoundCard({
       >
         <div>
           <p className="text-sm font-medium text-foreground">
-            {round.course.trim() || "Unnamed Course"}
+            {round.course.trim() || t.dashboard.unnamedCourse}
           </p>
           <p className="mt-1 text-xs text-muted">
-            {formatDate(round.date)} · {round.holes} Holes
-            {commonState ? ` · ${commonState}` : ""}
+            {formatDate(round.date, lang, t.common.unknownDate)} · {t.common.holesCount(round.holes)}
+            {commonState ? ` · ${stateLabel(t, commonState)}` : ""}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -450,7 +504,7 @@ function RoundCard({
               <p className="text-xs text-muted">
                 {formatToPar(scoreSummary.toPar)}
                 {scoreSummary.holesScored < round.holes
-                  ? ` · ${scoreSummary.holesScored}/${round.holes} holes`
+                  ? ` · ${t.dashboard.partialHoles(scoreSummary.holesScored, round.holes)}`
                   : ""}
               </p>
             )}
@@ -479,23 +533,26 @@ function RoundCard({
               <>
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage">
                   <SparkleIcon className="h-3 w-3" />
-                  AI Caddie Review
+                  {t.dashboard.reviewTitle}
                 </div>
-                <AnalysisSection label="What Helped" text={round.analysis.whatHelped} />
+                <AnalysisSection label={t.analysis.whatHelped} text={round.analysis.whatHelped} />
                 <AnalysisSection
-                  label="What Got In Your Way"
+                  label={t.analysis.whatGotInYourWay}
                   text={round.analysis.whatGotInYourWay}
                 />
-                <AnalysisSection label="Pattern To Watch" text={round.analysis.patternToWatch} />
                 <AnalysisSection
-                  label="Take Into Your Next Round"
+                  label={t.analysis.patternToWatch}
+                  text={round.analysis.patternToWatch}
+                />
+                <AnalysisSection
+                  label={t.analysis.takeIntoNextRound}
                   text={round.analysis.takeIntoNextRound}
                 />
               </>
             ) : hasReflection ? (
-              <p className="text-sm text-muted">Analysis preparing…</p>
+              <p className="text-sm text-muted">{t.dashboard.analysisPreparing}</p>
             ) : (
-              <p className="text-sm text-muted">No reflection saved for this round yet.</p>
+              <p className="text-sm text-muted">{t.dashboard.noReflectionYet}</p>
             )}
           </div>
         </div>
@@ -505,6 +562,7 @@ function RoundCard({
 }
 
 export function MentalGameDashboard() {
+  const { lang, t } = useI18n();
   const rawRounds = useSyncExternalStore(
     subscribeToStorage,
     getRoundsSnapshot,
@@ -533,22 +591,22 @@ export function MentalGameDashboard() {
         />
         <div className="relative mx-auto w-full max-w-md px-6 py-16">
         <h1 className="motion-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          My Mental Game
+          {t.dashboard.title}
         </h1>
         <div className="motion-body">
         <p className="mt-2 text-base text-muted">
-          See what&apos;s happening beyond the score.
+          {t.dashboard.subtitle}
         </p>
 
         <p className="mt-12 text-sm text-muted">
-          Your mental game starts with your first round.
+          {t.dashboard.emptyStart}
         </p>
 
         <Link
           href="/play"
           className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
         >
-          Start a Round →
+          {t.dashboard.startRound}
         </Link>
         </div>
         </div>
@@ -582,11 +640,12 @@ export function MentalGameDashboard() {
   );
 
   const courseHistories = buildCourseHistories(rounds);
+  const recoveryStats = computeRecoveryStats(rounds);
 
   const analyzedRounds = recentRounds.filter((round) => round.analysis);
   const whatToWatch = buildLearningTakeaways(analyzedRounds);
   const whatsHelping = buildWhatsHelping(analyzedRounds);
-  const currentFocus = buildCurrentFocus(recentRounds, stateRoundCounts);
+  const currentFocus = buildCurrentFocus(recentRounds, stateRoundCounts, t);
 
   return (
     <div className="relative overflow-hidden">
@@ -598,10 +657,10 @@ export function MentalGameDashboard() {
       />
       <div className="relative mx-auto w-full max-w-md px-6 py-16 lg:max-w-4xl">
       <h1 className="motion-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-        My Mental Game
+        {t.dashboard.title}
       </h1>
       <p className="motion-body mt-2 text-base text-muted">
-        See what&apos;s happening beyond the score.
+        {t.dashboard.subtitle}
       </p>
 
       {/* Named grid areas so mobile keeps document order (review, then
@@ -622,16 +681,16 @@ export function MentalGameDashboard() {
               <SparkleIcon className="h-4 w-4 text-sage" />
             </span>
             <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
-              AI Caddie Review
+              {t.dashboard.reviewTitle}
             </h2>
           </div>
           <p className="mt-1.5 text-sm text-muted">
-            What Fore!Mind is learning about your mental game.
+            {t.dashboard.reviewSubtitle}
           </p>
 
           <div className="mt-6">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-sage">
-              Current Mental Focus
+              {t.dashboard.currentFocus}
             </h3>
             {currentFocus ? (
               <div className="card-hover motif-dimples mt-3 rounded-3xl border border-forest bg-sage-soft px-6 py-6 shadow-lg shadow-black/20">
@@ -644,33 +703,37 @@ export function MentalGameDashboard() {
               </div>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                Play a few more rounds so Fore!Mind can find a focus area for you.
+                {t.dashboard.currentFocusEmpty}
               </p>
             )}
           </div>
 
           <div className="mt-7">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-sage">
-              Patterns Fore!Mind Is Seeing
+              {t.dashboard.patterns}
             </h3>
             <div className="mt-3 space-y-2">
               {topState && topState.roundCount >= 2 ? (
                 <p className="text-sm text-foreground">
-                  {topState.state} appeared in{" "}
-                  {formatRoundCountLabel(topState.roundCount, recentRounds.length)}.
+                  {t.dashboard.stateAppeared(
+                    stateLabel(t, topState.state),
+                    t.dashboard.roundCountLabel(topState.roundCount, recentRounds.length),
+                  )}
                 </p>
               ) : null}
               {topDifficultState &&
               topDifficultState.roundCount >= 2 &&
               topDifficultState.state !== topState?.state ? (
                 <p className="text-sm text-foreground">
-                  Most common difficult state: {topDifficultState.state} —{" "}
-                  {formatRoundCountLabel(topDifficultState.roundCount, recentRounds.length)}.
+                  {t.dashboard.difficultState(
+                    stateLabel(t, topDifficultState.state),
+                    t.dashboard.roundCountLabel(topDifficultState.roundCount, recentRounds.length),
+                  )}
                 </p>
               ) : null}
               {(!topState || topState.roundCount < 2) && (
                 <p className="text-sm text-muted">
-                  Not enough repeated mental states yet to show a pattern.
+                  {t.dashboard.noPatterns}
                 </p>
               )}
             </div>
@@ -678,14 +741,14 @@ export function MentalGameDashboard() {
 
           <div className="mt-7">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-sage">
-              What&apos;s Helping
+              {t.dashboard.whatsHelping}
             </h3>
             {whatsHelping.length > 0 ? (
               <div className="mt-3 space-y-3">
                 {whatsHelping.map((takeaway, index) => (
                   <div key={index}>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                      {takeaway.recurring ? "Recurring" : "Recent win"}
+                      {takeaway.recurring ? t.dashboard.recurring : t.dashboard.recentWin}
                     </p>
                     <p className="mt-0.5 text-sm text-foreground">{takeaway.text}</p>
                   </div>
@@ -693,21 +756,21 @@ export function MentalGameDashboard() {
               </div>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                Fore!Mind needs a couple more analyzed rounds to spot what&apos;s helping.
+                {t.dashboard.whatsHelpingEmpty}
               </p>
             )}
           </div>
 
           <div className="mt-7">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-sage">
-              What To Watch
+              {t.dashboard.whatToWatch}
             </h3>
             {whatToWatch.length > 0 ? (
               <div className="mt-3 space-y-3">
                 {whatToWatch.map((takeaway, index) => (
                   <div key={index}>
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-                      {takeaway.recurring ? "Recurring" : "Recent takeaway"}
+                      {takeaway.recurring ? t.dashboard.recurring : t.dashboard.recentTakeaway}
                     </p>
                     <p className="mt-0.5 text-sm text-foreground">{takeaway.text}</p>
                   </div>
@@ -715,7 +778,7 @@ export function MentalGameDashboard() {
               </div>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                Fore!Mind needs a couple more analyzed rounds to start noticing patterns.
+                {t.dashboard.whatToWatchEmpty}
               </p>
             )}
           </div>
@@ -723,7 +786,7 @@ export function MentalGameDashboard() {
           <div className="mt-7">
             <h3 className="flex items-center gap-1.5 text-sm font-semibold uppercase tracking-wide text-sage">
               <HistoryIcon className="h-3.5 w-3.5" />
-              Caddie Log
+              {t.dashboard.caddieLog}
             </h3>
             {recentCaddieLog.length > 0 ? (
               <div className="mt-3 space-y-2">
@@ -732,7 +795,9 @@ export function MentalGameDashboard() {
                     key={entry.id}
                     className="card-hover rounded-2xl border border-border bg-surface px-4 py-3"
                   >
-                    <p className="text-xs text-muted">{formatDate(entry.timestamp)}</p>
+                    <p className="text-xs text-muted">
+                      {formatDateTime(entry.timestamp, lang, t.common.unknownDate)}
+                    </p>
                     <p className="mt-1 line-clamp-2 text-sm text-foreground">{entry.message}</p>
                     <p className="mt-1 line-clamp-1 text-xs text-muted">{entry.response}</p>
                   </div>
@@ -740,37 +805,38 @@ export function MentalGameDashboard() {
               </div>
             ) : (
               <p className="mt-2 text-sm text-muted">
-                Your conversations with Fore!Mind will show up here.
+                {t.dashboard.caddieLogEmpty}
               </p>
             )}
             <Link
               href="/mental-game/log"
               className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-sage transition-colors hover:text-foreground"
             >
-              View all conversations →
+              {t.dashboard.viewAll}
             </Link>
           </div>
         </section>
 
         <section style={{ gridArea: "baseline" }} className="motion-body mt-10 lg:mt-0">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-sage">
-            Mental Baseline
+            {t.dashboard.baseline}
           </h2>
           <div className="mt-3 grid grid-cols-2 gap-3">
             <BaselineStat
-              label="Focus"
-              value={averageFocus !== null ? averageFocus.toFixed(1) : null}
+              label={t.checkIn.focus}
+              value={averageFocus !== null ? formatDecimal(averageFocus, lang) : null}
             />
             <BaselineStat
-              label="Energy"
-              value={averageEnergy !== null ? averageEnergy.toFixed(1) : null}
+              label={t.checkIn.energy}
+              value={averageEnergy !== null ? formatDecimal(averageEnergy, lang) : null}
             />
             <BaselineStat
-              label="Confidence"
-              value={averageConfidence !== null ? averageConfidence.toFixed(1) : null}
+              label={t.checkIn.confidence}
+              value={averageConfidence !== null ? formatDecimal(averageConfidence, lang) : null}
             />
-            <BaselineStat label="Rounds Played" value={String(rounds.length)} />
+            <BaselineStat label={t.dashboard.roundsPlayed} value={String(rounds.length)} />
           </div>
+          <RecoveryCard stats={recoveryStats} />
         </section>
 
         <section style={{ gridArea: "recent" }} className="motion-body-late mt-8">
@@ -778,7 +844,7 @@ export function MentalGameDashboard() {
             <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sage-soft">
               <ScorecardIcon className="h-3.5 w-3.5 text-sage" />
             </span>
-            Recent Rounds
+            {t.dashboard.recentRounds}
           </h2>
           <div className="mt-3 space-y-2">
             {recentRounds.map((round) => (
@@ -798,7 +864,7 @@ export function MentalGameDashboard() {
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-sage-soft">
                 <FlagIcon className="h-3.5 w-3.5 text-sage" />
               </span>
-              By Course
+              {t.dashboard.byCourse}
             </h2>
             <div className="mt-3 space-y-2">
               {courseHistories.map((history) => (

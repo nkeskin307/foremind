@@ -1,5 +1,7 @@
 export const runtime = "nodejs";
 
+import { getLanguageInfo, toAppLanguage } from "@/lib/i18n/languages";
+
 const GEMINI_MODEL = "gemini-3.1-flash-lite";
 
 const SYSTEM_INSTRUCTION = `You are the Fore!Mind Mental Caddie, an AI mental-game coach for recreational golfers.
@@ -102,25 +104,12 @@ type PastRound = {
   date: string;
 };
 
-// Mirrors CADDIE_LANGUAGES on the client; anything else falls back to English.
-const LANGUAGE_NAMES: Record<string, string> = {
-  "en-US": "English",
-  "tr-TR": "Turkish",
-  "es-ES": "Spanish",
-  "fr-FR": "French",
-  "de-DE": "German",
-  "it-IT": "Italian",
-  "pt-BR": "Portuguese",
-  "zh-CN": "Chinese (Simplified)",
-  "ja-JP": "Japanese",
-  "ko-KR": "Korean",
-  "ar-SA": "Arabic",
-};
-const DEFAULT_LANGUAGE = "en-US";
 const MAX_SPOKEN_WORDS = 60;
 // Chinese/Japanese don't separate words with spaces; ~120 characters is a
 // similar spoken length.
 const MAX_SPOKEN_CJK_CHARS = 120;
+const MAX_RESET_WORDS = 40;
+const MAX_RESET_CJK_CHARS = 80;
 
 const MAX_HISTORY_ROUNDS = 5;
 const MAX_COURSE_ROUNDS = 3;
@@ -427,28 +416,37 @@ function parsePastRounds(value: unknown): PastRound[] {
   return rounds;
 }
 
+/** The app language ("tr", or an older "tr-TR"); anything unsupported falls back to English. */
 function parseLanguage(value: unknown): { code: string; name: string } {
-  const code = typeof value === "string" && value in LANGUAGE_NAMES ? value : DEFAULT_LANGUAGE;
-  return { code, name: LANGUAGE_NAMES[code] };
+  const info = getLanguageInfo(toAppLanguage(value) ?? "en");
+  return { code: info.code, name: info.englishName };
 }
 
 function buildReplyInstructions(
   language: { code: string; name: string },
   handsFree: boolean,
+  reset: boolean,
 ): string {
+  if (reset) {
+    return `This is a proactive reset card shown on the golfer's round screen — not a reply to a question. Write it in ${language.name}. Under ${MAX_RESET_WORDS} words (under ${MAX_RESET_CJK_CHARS} characters in Chinese), one or two calm sentences, plain text. Briefly name what happened and the hole number from the situation below, then give one simple reset cue for the next shot. Don't claim a mental state caused a score. If a past-rounds pattern is included, you may mention it in a few words.\n\n`;
+  }
   const lines = [
     `Reply language: the golfer's chosen language is ${language.name}. Reply in ${language.name}. However, if the golfer's message below is clearly written in a different language, reply in the language of their message instead. The context above is in English only for your reference; translate any mental-state names or quotes naturally.`,
   ];
   if (handsFree) {
     lines.push(
-      `This reply will be read aloud while the golfer is on the course. Keep it under ${MAX_SPOKEN_WORDS} words (under ${MAX_SPOKEN_CJK_CHARS} characters in Chinese or Japanese): two or three short spoken sentences, no lists or symbols.`,
+      `This reply will be read aloud while the golfer is on the course. Keep it under ${MAX_SPOKEN_WORDS} words (under ${MAX_SPOKEN_CJK_CHARS} characters in Chinese): two or three short spoken sentences, no lists or symbols.`,
     );
   }
   return lines.join("\n") + "\n\n";
 }
 
 /** Server-side guarantee that Hands-Free replies stay short enough to speak. */
-function limitSpokenReply(text: string): string {
+function limitSpokenReply(
+  text: string,
+  maxWords: number = MAX_SPOKEN_WORDS,
+  maxCjkChars: number = MAX_SPOKEN_CJK_CHARS,
+): string {
   const clean = text.replace(/\s+/g, " ").trim();
   const isCjk = /[\u3040-\u30ff\u3400-\u9fff]/.test(clean) && clean.split(" ").length < 15;
 
@@ -461,14 +459,14 @@ function limitSpokenReply(text: string): string {
   };
 
   if (isCjk) {
-    return clean.length <= MAX_SPOKEN_CJK_CHARS
+    return clean.length <= maxCjkChars
       ? clean
-      : cutAtSentence(clean.slice(0, MAX_SPOKEN_CJK_CHARS), 30);
+      : cutAtSentence(clean.slice(0, maxCjkChars), 20);
   }
 
   const words = clean.split(" ");
-  if (words.length <= MAX_SPOKEN_WORDS) return clean;
-  const cut = words.slice(0, MAX_SPOKEN_WORDS).join(" ");
+  if (words.length <= maxWords) return clean;
+  const cut = words.slice(0, maxWords).join(" ");
   return cutAtSentence(cut, Math.floor(cut.length / 3));
 }
 
@@ -983,9 +981,13 @@ export async function POST(request: Request) {
   const rawBody = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
   const language = parseLanguage(rawBody.language);
   const handsFree = rawBody.mode === "hands-free";
-  const replyInstructions = buildReplyInstructions(language, handsFree);
+  const reset = rawBody.mode === "reset";
+  const replyInstructions = buildReplyInstructions(language, handsFree, reset);
 
-  const promptText = `${contextBlock}${courseBlock}${historyBlock}${replyInstructions}Golfer says: ${message.trim()}`;
+  // Reset cards are written by the app's rules, not typed by the golfer.
+  const promptText = reset
+    ? `${contextBlock}${replyInstructions}Situation (from the app, not typed by the golfer): ${message.trim()}`
+    : `${contextBlock}${courseBlock}${historyBlock}${replyInstructions}Golfer says: ${message.trim()}`;
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -1003,7 +1005,12 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json({ response: handsFree ? limitSpokenReply(result.text) : result.text });
+    const text = reset
+      ? limitSpokenReply(result.text, MAX_RESET_WORDS, MAX_RESET_CJK_CHARS)
+      : handsFree
+        ? limitSpokenReply(result.text)
+        : result.text;
+    return Response.json({ response: text });
   } catch (error) {
     console.error("Failed to reach Gemini API:", error);
     return Response.json({ error: UNAVAILABLE_MESSAGE }, { status: 502 });

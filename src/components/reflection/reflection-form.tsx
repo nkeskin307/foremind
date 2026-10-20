@@ -18,6 +18,8 @@ import {
   clearReflectionDraft,
   type ReflectionDraft,
 } from "@/lib/reflection/reflection-draft-storage";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { getLanguageSnapshot } from "@/lib/i18n/language-store";
 
 const EMPTY_DRAFT: ReflectionDraft = { whatWorked: "", whatGotInHead: "", whatToRemember: "" };
 
@@ -38,7 +40,8 @@ async function generatePostRoundAnalysis(round: CompletedRound): Promise<void> {
     const res = await fetch("/api/post-round-analysis", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ round }),
+      // The analysis is written in the app language chosen at save time.
+      body: JSON.stringify({ round, language: getLanguageSnapshot() }),
     });
     const data = await res.json();
     if (data && data.analysis) {
@@ -57,6 +60,7 @@ export function ReflectionForm({
   roundData: RoundData;
   roundId: string | null;
 }) {
+  const { t } = useI18n();
   // Read the draft after mount (server + hydration render see ""), so the
   // saved answers never cause a hydration mismatch.
   const rawDraft = useSyncExternalStore(
@@ -124,31 +128,31 @@ export function ReflectionForm({
       />
       <div className="relative mx-auto w-full max-w-md px-6 py-16">
       <h1 className="motion-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-        Reflect on your round
+        {t.reflection.title}
       </h1>
       <div className="motion-body">
       <p className="mt-2 text-base text-muted">
-        Take a minute to understand what helped — and what got in your way.
+        {t.reflection.subtitle}
       </p>
 
       <div className="mt-8 space-y-6">
         <VoiceTextareaField
           id="what-worked"
-          label="What worked well mentally today?"
+          label={t.reflection.whatWorked}
           value={whatWorked}
           onChange={(value) => updateField("whatWorked", value)}
         />
 
         <VoiceTextareaField
           id="what-got-in-head"
-          label="What got in your head?"
+          label={t.reflection.whatGotInHead}
           value={whatGotInHead}
           onChange={(value) => updateField("whatGotInHead", value)}
         />
 
         <VoiceTextareaField
           id="what-to-remember"
-          label="What do you want to remember next round?"
+          label={t.reflection.whatToRemember}
           value={whatToRemember}
           onChange={(value) => updateField("whatToRemember", value)}
         />
@@ -160,17 +164,17 @@ export function ReflectionForm({
         disabled={!isValid}
         className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light disabled:opacity-40 disabled:hover:bg-forest"
       >
-        Save Reflection
+        {t.reflection.save}
       </button>
 
       {saved && (
         <div className="motion-fade mt-4 space-y-4 text-center">
-          <p className="text-sm text-sage">Round complete.</p>
+          <p className="text-sm text-sage">{t.reflection.complete}</p>
           <Link
             href="/mental-game"
             className="inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
           >
-            View My Mental Game →
+            {t.reflection.viewMentalGame}
           </Link>
         </div>
       )}

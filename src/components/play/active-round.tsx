@@ -19,11 +19,31 @@ import {
   clearActiveRound,
   type ActiveRoundRecord,
 } from "@/lib/play/active-round-storage";
-import { createCompletedRound } from "@/lib/mental-game/completed-rounds";
+import { createCompletedRound, loadCompletedRounds } from "@/lib/mental-game/completed-rounds";
+import type { Intervention } from "@/lib/play/interventions";
+import {
+  canIntervene,
+  describeBlowUpPattern,
+  detectTrigger,
+  fallbackResetMessage,
+  fetchResetMessage,
+  withNextHoleResults,
+} from "@/lib/play/proactive-caddie";
+import { describeWhy } from "@/lib/play/reset-card-copy";
+import { useI18n } from "@/lib/i18n/use-i18n";
+import { getMessages, stateLabel } from "@/lib/i18n";
+import { formatList } from "@/lib/i18n/format";
+import { getLanguageSnapshot } from "@/lib/i18n/language-store";
+
+// Score taps settle for this long before the Proactive Caddie checks the
+// hole (so tapping + from par to +3 doesn't fire at +2 mid-tap). Moving to
+// another hole checks immediately.
+const SCORE_CHECK_DELAY_MS = 1500;
 
 const MIN_SCORE = 1;
 const MAX_SCORE = 12;
 
+// Stored as stable English keys; only translated for display.
 const MENTAL_STATES = [
   "Confident",
   "Focused",
@@ -34,19 +54,6 @@ const MENTAL_STATES = [
 ] as const;
 
 type MentalState = (typeof MENTAL_STATES)[number];
-
-const RESET_MESSAGES: Record<MentalState, string> = {
-  Confident:
-    "Trust what's working. Stay committed to your routine and don't force anything.",
-  Focused: "Stay with the process. Keep your attention on the shot in front of you.",
-  Calm: "Keep this tempo. Let the round come to you.",
-  Frustrated:
-    "Leave the last shot where it happened. Your only job now is the next target.",
-  Rushed:
-    "Slow your routine down. Your group's pace does not have to become your swing tempo.",
-  Overthinking:
-    "Stop adding swing thoughts. Pick one target, trust your game, and commit.",
-};
 
 export function ActiveRound({
   courseName,
@@ -78,11 +85,41 @@ export function ActiveRound({
   const [pendingMentalState, setPendingMentalState] = useState<MentalState | null>(
     null,
   );
+  const [interventions, setInterventions] = useState<Intervention[]>(
+    () => initialActiveRound?.interventions ?? [],
+  );
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  const [proactiveOff, setProactiveOff] = useState(
+    () => initialActiveRound?.proactiveCaddieOff ?? false,
+  );
+  // Read synchronously by the delayed score check.
+  const proactiveOffRef = useRef(proactiveOff);
+  const { lang, t } = useI18n();
+  const cardLabels = t.resetCard;
+  const [loadingCardId, setLoadingCardId] = useState<string | null>(null);
   const [showUnscoredWarning, setShowUnscoredWarning] = useState(false);
   const [isFinishing, setIsFinishing] = useState(false);
   // Synchronous guard: state updates aren't visible until the next render,
   // so a fast double tap could otherwise run handleFinishRound twice.
   const finishingRef = useRef(false);
+  // Latest values for the delayed score check (read only in handlers/timers).
+  const latestRef = useRef<{
+    scores: HoleScore[];
+    pars: number[];
+    mentalNotes: (string | null)[];
+    interventions: Intervention[];
+  }>({ scores, pars, mentalNotes, interventions });
+  const scoreCheckRef = useRef<{ hole: number; timer: ReturnType<typeof setTimeout> } | null>(
+    null,
+  );
+
+
+  useEffect(
+    () => () => {
+      if (scoreCheckRef.current) clearTimeout(scoreCheckRef.current.timer);
+    },
+    [],
+  );
 
   const summary = summarizeScores(scores, pars);
   const { total, totalPar, toPar, holesScored, unscoredHoles } = summary;
@@ -101,14 +138,17 @@ export function ActiveRound({
     [mentalNotes, scores, pars],
   );
 
-  const { setPreRoundContext, setRoundContext } = useCaddieContext();
+  const { setPreRoundContext, setRoundContext, openPanel } = useCaddieContext();
 
   useEffect(() => {
     setPreRoundContext(preRound);
   }, [preRound, setPreRoundContext]);
 
+  // Latest round context, also sent with Proactive Caddie reset requests.
+  const roundContextRef = useRef<unknown>(null);
+
   useEffect(() => {
-    setRoundContext({
+    const roundContext = {
       course: courseName,
       holes: totalHoles,
       currentHole: currentHole + 1,
@@ -119,7 +159,9 @@ export function ActiveRound({
       currentHoleScore: currentScore,
       currentHoleMentalState: currentMentalNote,
       moments: roundMoments,
-    });
+    };
+    roundContextRef.current = roundContext;
+    setRoundContext(roundContext);
   }, [
     courseName,
     totalHoles,
@@ -133,6 +175,10 @@ export function ActiveRound({
     roundMoments,
     setRoundContext,
   ]);
+
+  useEffect(() => {
+    latestRef.current = { scores, pars, mentalNotes, interventions };
+  });
 
   useEffect(() => {
     return () => {
@@ -157,6 +203,8 @@ export function ActiveRound({
       pars,
       mentalNotes,
       preRound,
+      interventions: withNextHoleResults(interventions, scores, pars),
+      proactiveCaddieOff: proactiveOff,
     });
   }, [
     roundId,
@@ -168,11 +216,133 @@ export function ActiveRound({
     pars,
     mentalNotes,
     preRound,
+    interventions,
+    proactiveOff,
   ]);
+
+  // Proactive Caddie: simple in-browser rules decide whether to show a
+  // reset card; the AI only writes the wording.
+  function runTriggerCheck(
+    holeIndex: number,
+    change: "score" | "mental-state",
+    overrides: { mentalNotes?: (string | null)[] } = {},
+  ) {
+    if (finishingRef.current || proactiveOffRef.current) return;
+    const latest = latestRef.current;
+    const hit = detectTrigger({
+      scores: latest.scores,
+      pars: latest.pars,
+      mentalNotes: overrides.mentalNotes ?? latest.mentalNotes,
+      preRoundConfidence: preRound.confidence,
+      holeIndex,
+      change,
+    });
+    if (!hit || !canIntervene(hit.hole, latest.interventions)) return;
+
+    const id = createActiveRoundId();
+    const intervention: Intervention = {
+      id,
+      hole: hit.hole,
+      trigger: hit.trigger,
+      reason: hit.reason,
+      // Saved immediately so the round always has a message, even if the
+      // AI is slow or the round is finished before it answers.
+      message: fallbackResetMessage(hit, getMessages(getLanguageSnapshot())),
+      source: "fallback",
+      outcome: "ignored",
+      createdAt: new Date().toISOString(),
+      nextHole: null,
+      nextHoleToPar: null,
+      detail: hit.detail,
+    };
+    latestRef.current = { ...latest, interventions: [...latest.interventions, intervention] };
+    setInterventions((prev) => [...prev, intervention]);
+    setActiveCardId(id);
+    setLoadingCardId(id);
+
+    const pattern =
+      hit.trigger === "blow-up" || hit.trigger === "rough-start"
+        ? describeBlowUpPattern(loadCompletedRounds())
+        : null;
+
+    void fetchResetMessage({
+      hit,
+      pattern,
+      language: getLanguageSnapshot(),
+      context: { preRound, round: roundContextRef.current },
+    }).then((message) => {
+      setLoadingCardId((current) => (current === id ? null : current));
+      if (!message) return;
+      setInterventions((prev) =>
+        prev.map((item) => (item.id === id ? { ...item, message, source: "ai" } : item)),
+      );
+    });
+  }
+
+  function flushScoreCheck() {
+    const pending = scoreCheckRef.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    scoreCheckRef.current = null;
+    runTriggerCheck(pending.hole, "score");
+  }
+
+  function scheduleScoreCheck(holeIndex: number) {
+    if (scoreCheckRef.current) {
+      clearTimeout(scoreCheckRef.current.timer);
+      if (scoreCheckRef.current.hole !== holeIndex) runTriggerCheck(scoreCheckRef.current.hole, "score");
+    }
+    scoreCheckRef.current = {
+      hole: holeIndex,
+      timer: setTimeout(() => {
+        scoreCheckRef.current = null;
+        runTriggerCheck(holeIndex, "score");
+      }, SCORE_CHECK_DELAY_MS),
+    };
+  }
+
+  function goToHole(index: number) {
+    flushScoreCheck();
+    setCurrentHole(Math.min(totalHoles - 1, Math.max(0, index)));
+  }
+
+  function hideCardIfOtherHoleScored() {
+    const card = interventions.find((item) => item.id === activeCardId);
+    if (card && card.hole !== currentHole + 1) setActiveCardId(null);
+  }
+
+  function handleCardDismiss(id: string) {
+    setInterventions((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, outcome: "dismissed" } : item)),
+    );
+    setActiveCardId(null);
+  }
+
+  function handleCardTalk(id: string) {
+    setInterventions((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, outcome: "opened" } : item)),
+    );
+    setActiveCardId(null);
+    openPanel();
+  }
+
+  function handleStopInterruptions(id: string) {
+    proactiveOffRef.current = true;
+    setProactiveOff(true);
+    if (scoreCheckRef.current) clearTimeout(scoreCheckRef.current.timer);
+    scoreCheckRef.current = null;
+    handleCardDismiss(id);
+  }
+
+  const activeCard = interventions.find((item) => item.id === activeCardId) ?? null;
 
   // The first tap on an unscored hole starts it at par; after that, +/−
   // adjust by one stroke.
   function adjustScore(delta: number) {
+    // An unanswered card goes away once the golfer scores a different hole
+    // (it stays "ignored").
+    hideCardIfOtherHoleScored();
+    scheduleScoreCheck(currentHole);
     setScores((prev) => {
       const next = [...prev];
       const existing = next[currentHole];
@@ -185,6 +355,10 @@ export function ActiveRound({
   }
 
   function clearScore() {
+    if (scoreCheckRef.current?.hole === currentHole) {
+      clearTimeout(scoreCheckRef.current.timer);
+      scoreCheckRef.current = null;
+    }
     setScores((prev) => {
       const next = [...prev];
       next[currentHole] = null;
@@ -208,12 +382,11 @@ export function ActiveRound({
   // Save the mental state the moment it's tapped, so closing the picker any
   // way (backdrop, Back to My Round) never loses it.
   function handleSelectMentalState(state: MentalState) {
-    setMentalNotes((prev) => {
-      const next = [...prev];
-      next[currentHole] = state;
-      return next;
-    });
+    const next = [...mentalNotes];
+    next[currentHole] = state;
+    setMentalNotes(next);
     setPendingMentalState(state);
+    runTriggerCheck(currentHole, "mental-state", { mentalNotes: next });
   }
 
   function handleBackToRound() {
@@ -231,12 +404,14 @@ export function ActiveRound({
 
   function handleKeepScoring() {
     setShowUnscoredWarning(false);
-    if (unscoredHoles.length > 0) setCurrentHole(unscoredHoles[0] - 1);
+    if (unscoredHoles.length > 0) goToHole(unscoredHoles[0] - 1);
   }
 
   function handleFinishRound() {
     if (finishingRef.current) return;
     finishingRef.current = true;
+    if (scoreCheckRef.current) clearTimeout(scoreCheckRef.current.timer);
+    scoreCheckRef.current = null;
     setIsFinishing(true);
     setShowUnscoredWarning(false);
 
@@ -249,6 +424,7 @@ export function ActiveRound({
       total,
       preRound,
       date: new Date().toISOString(),
+      interventions: withNextHoleResults(interventions, scores, pars),
     };
     createCompletedRound(roundId, roundData);
     clearActiveRound();
@@ -267,15 +443,15 @@ export function ActiveRound({
           )}
           <h1 className="motion-heading mt-1 flex items-center gap-2.5 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             <FlagIcon className="h-6 w-6 shrink-0 text-sage" />
-            Hole {currentHole + 1} of {totalHoles}
+            {t.play.holeOf(currentHole + 1, totalHoles)}
           </h1>
         </div>
         <div className="motion-body mt-2 text-right text-xs text-muted">
           <p className="whitespace-nowrap">
-            Total: {holesScored > 0 ? `${total} (${formatToPar(toPar)})` : "—"}
+            {t.play.total}: {holesScored > 0 ? `${total} (${formatToPar(toPar)})` : "—"}
           </p>
           <p className="mt-0.5 whitespace-nowrap">
-            {holesScored} of {totalHoles} scored
+            {t.play.scoredOf(holesScored, totalHoles)}
           </p>
         </div>
       </div>
@@ -290,11 +466,9 @@ export function ActiveRound({
             <button
               key={index}
               type="button"
-              onClick={() => setCurrentHole(index)}
+              onClick={() => goToHole(index)}
               aria-current={isCurrent ? "step" : undefined}
-              aria-label={`Go to hole ${index + 1}, ${
-                isScored ? `scored ${holeScore}` : "not scored yet"
-              }`}
+              aria-label={t.play.goToHole(index + 1, holeScore)}
               className={`flex aspect-square w-full items-center justify-center rounded-full text-xs font-medium transition-colors ${
                 isCurrent
                   ? "bg-forest text-foreground"
@@ -310,11 +484,54 @@ export function ActiveRound({
       </div>
 
       <p className="mt-2 text-center text-xs text-muted">
-        Shaded holes have a score.
+        {t.play.shadedHint}
       </p>
 
+      {activeCard && (
+        <div
+          role="status"
+          className="motion-fade mt-6 rounded-2xl border border-forest bg-sage-soft px-4 py-4"
+        >
+          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage">
+            <FlagIcon className="h-3.5 w-3.5" />
+            {cardLabels.title}
+          </p>
+          <p className="mt-1.5 text-xs text-muted">{describeWhy(activeCard, t)}</p>
+          <p className="mt-2 text-sm text-foreground">
+            {loadingCardId === activeCard.id ? (
+              <span className="animate-pulse text-muted">{cardLabels.loading}</span>
+            ) : (
+              activeCard.message
+            )}
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleCardDismiss(activeCard.id)}
+              className="flex-1 rounded-full border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
+            >
+              {cardLabels.reset}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCardTalk(activeCard.id)}
+              className="flex-1 rounded-full bg-forest px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-forest-light"
+            >
+              {cardLabels.talk}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleStopInterruptions(activeCard.id)}
+            className="mt-3 w-full text-center text-xs text-muted underline underline-offset-2 hover:text-foreground"
+          >
+            {cardLabels.stop}
+          </button>
+        </div>
+      )}
+
       <div className="mt-8">
-        <p className="text-center text-sm font-medium text-foreground">Par</p>
+        <p className="text-center text-sm font-medium text-foreground">{t.play.par}</p>
         <div className="mt-2 flex justify-center gap-2">
           {PAR_OPTIONS.map((par) => {
             const isSelected = currentPar === par;
@@ -338,13 +555,13 @@ export function ActiveRound({
       </div>
 
       <div className="mt-8">
-        <p className="text-center text-sm font-medium text-foreground">Score</p>
+        <p className="text-center text-sm font-medium text-foreground">{t.play.score}</p>
         <div className="mt-3 flex items-center justify-center gap-6">
           <button
             type="button"
             onClick={() => adjustScore(-1)}
             disabled={currentScore !== null && currentScore <= MIN_SCORE}
-            aria-label="Decrease score"
+            aria-label={t.play.decrease}
             className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-lg font-semibold text-foreground transition-colors hover:border-forest disabled:opacity-40 disabled:hover:border-border"
           >
             −
@@ -360,7 +577,7 @@ export function ActiveRound({
             type="button"
             onClick={() => adjustScore(1)}
             disabled={currentScore !== null && currentScore >= MAX_SCORE}
-            aria-label="Increase score"
+            aria-label={t.play.increase}
             className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-lg font-semibold text-foreground transition-colors hover:border-forest disabled:opacity-40 disabled:hover:border-border"
           >
             +
@@ -368,17 +585,17 @@ export function ActiveRound({
         </div>
         {currentScore === null ? (
           <p className="mt-2 text-center text-xs text-muted">
-            Not scored yet — tap + or − to start at par.
+            {t.play.notScoredHint}
           </p>
         ) : (
           <p className="mt-2 text-center text-xs text-muted">
-            {formatToPar(currentScore - currentPar)} on this hole ·{" "}
+            {t.play.onThisHole(formatToPar(currentScore - currentPar))} ·{" "}
             <button
               type="button"
               onClick={clearScore}
               className="underline underline-offset-2 hover:text-foreground"
             >
-              Clear
+              {t.play.clear}
             </button>
           </p>
         )}
@@ -390,12 +607,12 @@ export function ActiveRound({
           onClick={() => setShowMentalCheck(true)}
           className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground"
         >
-          How am I feeling?
+          {t.play.howFeeling}
         </button>
 
         {currentMentalNote && (
           <p className="mt-2 text-xs text-sage">
-            Mental note: {currentMentalNote}
+            {t.play.mentalNote(stateLabel(t, currentMentalNote))}
           </p>
         )}
       </div>
@@ -403,11 +620,11 @@ export function ActiveRound({
       <div className="mt-10 flex gap-3">
         <button
           type="button"
-          onClick={() => setCurrentHole((hole) => Math.max(0, hole - 1))}
+          onClick={() => goToHole(currentHole - 1)}
           disabled={currentHole === 0}
           className="flex-1 rounded-full border border-border bg-surface px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:border-forest disabled:opacity-40 disabled:hover:border-border"
         >
-          Previous
+          {t.play.previous}
         </button>
         {isLastHole ? (
           <button
@@ -416,15 +633,15 @@ export function ActiveRound({
             disabled={isFinishing}
             className="flex-1 rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light disabled:opacity-60 disabled:hover:bg-forest"
           >
-            {isFinishing ? "Saving…" : "Finish Round →"}
+            {isFinishing ? t.play.saving : t.play.finish}
           </button>
         ) : (
           <button
             type="button"
-            onClick={() => setCurrentHole((hole) => Math.min(totalHoles - 1, hole + 1))}
+            onClick={() => goToHole(currentHole + 1)}
             className="flex-1 rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
           >
-            Next Hole →
+            {t.play.nextHole}
           </button>
         )}
       </div>
@@ -446,21 +663,17 @@ export function ActiveRound({
               id="unscored-warning-heading"
               className="text-base font-semibold text-foreground"
             >
-              {unscoredHoles.length === 1
-                ? "1 hole has no score"
-                : `${unscoredHoles.length} holes have no score`}
+              {t.play.unscoredTitle(unscoredHoles.length)}
             </h2>
             <p className="mt-3 text-sm text-foreground">
-              Hole{unscoredHoles.length === 1 ? "" : "s"} {unscoredHoles.join(", ")}{" "}
-              {unscoredHoles.length === 1 ? "isn't" : "aren't"} scored. Unscored holes
-              won&apos;t count toward your total or analysis.
+              {t.play.unscoredBody(formatList(unscoredHoles, lang), unscoredHoles.length)}
             </p>
             <button
               type="button"
               onClick={handleKeepScoring}
               className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
             >
-              Keep Scoring
+              {t.play.keepScoring}
             </button>
             <button
               type="button"
@@ -468,7 +681,7 @@ export function ActiveRound({
               disabled={isFinishing}
               className="mt-3 inline-flex w-full items-center justify-center rounded-full border border-border bg-surface px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:border-forest disabled:opacity-60"
             >
-              {isFinishing ? "Saving…" : "Finish Anyway"}
+              {isFinishing ? t.play.saving : t.play.finishAnyway}
             </button>
           </div>
         </div>
@@ -492,17 +705,17 @@ export function ActiveRound({
                   id="mental-check-heading"
                   className="text-base font-semibold text-foreground"
                 >
-                  {pendingMentalState}
+                  {stateLabel(t, pendingMentalState)}
                 </h2>
                 <p className="mt-3 text-sm text-foreground">
-                  {RESET_MESSAGES[pendingMentalState]}
+                  {t.play.resetMessages[pendingMentalState]}
                 </p>
                 <button
                   type="button"
                   onClick={handleBackToRound}
                   className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
                 >
-                  Back to My Round
+                  {t.play.backToRound}
                 </button>
               </>
             ) : (
@@ -511,7 +724,7 @@ export function ActiveRound({
                   id="mental-check-heading"
                   className="text-base font-semibold text-foreground"
                 >
-                  What&apos;s affecting you right now?
+                  {t.play.mentalCheckTitle}
                 </h2>
 
                 <div className="mt-4 grid grid-cols-2 gap-2">
@@ -522,7 +735,7 @@ export function ActiveRound({
                       onClick={() => handleSelectMentalState(state)}
                       className="rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-forest"
                     >
-                      {state}
+                      {stateLabel(t, state)}
                     </button>
                   ))}
                 </div>
@@ -532,7 +745,7 @@ export function ActiveRound({
                   onClick={closeMentalCheck}
                   className="mt-4 w-full text-center text-xs text-muted hover:text-foreground"
                 >
-                  Cancel
+                  {t.common.cancel}
                 </button>
               </>
             )}

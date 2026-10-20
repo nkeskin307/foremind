@@ -1,3 +1,5 @@
+import { normalizeInterventions, type Intervention } from "@/lib/play/interventions";
+
 export type PreRoundCheckIn = {
   focus: number | null;
   energy: number | null;
@@ -18,6 +20,8 @@ export type RoundData = {
   mentalNotes: (string | null)[];
   preRound: PreRoundCheckIn;
   date: string;
+  /** Proactive Caddie cards shown during the round (empty for older rounds). */
+  interventions: Intervention[];
 };
 
 export const DEFAULT_PAR = 4;
@@ -105,6 +109,7 @@ function emptyRoundData(): RoundData {
     mentalNotes: Array(18).fill(null),
     preRound: { focus: null, energy: null, confidence: null, note: "" },
     date: new Date().toISOString(),
+    interventions: [],
   };
 }
 
@@ -135,6 +140,7 @@ export function normalizeRoundData(value: unknown): RoundData {
     mentalNotes: normalizeMentalNotes(raw.mentalNotes, holes),
     preRound: parsePreRound(raw.preRound),
     date: typeof raw.date === "string" ? raw.date : new Date().toISOString(),
+    interventions: normalizeInterventions(raw.interventions),
   };
 }
 

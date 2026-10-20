@@ -17,6 +17,7 @@ import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
 import { useSpeechRecognition } from "@/lib/speech/use-speech-recognition";
 import type { CheckInField, CheckInRatings } from "@/lib/prepare/generate-routine";
 import { useCaddieContext } from "@/lib/caddie/caddie-context";
+import { useI18n } from "@/lib/i18n/use-i18n";
 import { checkInToQueryString, type CheckInQueryData } from "@/lib/prepare/check-in-params";
 import {
   clearCheckInDraft,
@@ -33,12 +34,11 @@ import {
 
 const RATING_FIELDS: {
   key: CheckInField;
-  label: string;
   Icon: ComponentType<{ className?: string }>;
 }[] = [
-  { key: "focus", label: "Focus", Icon: TargetIcon },
-  { key: "energy", label: "Energy", Icon: EnergyIcon },
-  { key: "confidence", label: "Confidence", Icon: ShieldIcon },
+  { key: "focus", Icon: TargetIcon },
+  { key: "energy", Icon: EnergyIcon },
+  { key: "confidence", Icon: ShieldIcon },
 ];
 
 const SCALE = [1, 2, 3, 4, 5];
@@ -57,6 +57,7 @@ export function PreRoundCheckIn({
   initialCheckIn: CheckInQueryData;
 }) {
   const router = useRouter();
+  const { t } = useI18n();
 
   // localStorage is read through useSyncExternalStore so the server render
   // and the first client (hydration) render both see "" — the saved values
@@ -111,7 +112,7 @@ export function PreRoundCheckIn({
     [savedValues],
   );
 
-  const { supported, isListening, error, start, stop } =
+  const { supported, isListening, errorCode, start, stop } =
     useSpeechRecognition(handleTranscript);
 
   const { setPreRoundContext } = useCaddieContext();
@@ -174,19 +175,19 @@ export function PreRoundCheckIn({
       />
       <div className="relative mx-auto w-full max-w-md px-6 py-16">
       <h1 className="motion-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-        Before you tee off
+        {t.checkIn.title}
       </h1>
       <div className="motion-body">
       <p className="mt-2 text-base text-muted">
-        Take a minute to check in with yourself.
+        {t.checkIn.subtitle}
       </p>
 
       <div className="mt-8 space-y-5">
-        {RATING_FIELDS.map(({ key, label, Icon }) => (
+        {RATING_FIELDS.map(({ key, Icon }) => (
           <div key={key}>
             <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
               <Icon className="h-3.5 w-3.5 text-sage" />
-              {label}
+              {t.checkIn[key]}
             </span>
             <div className="mt-2 flex gap-2">
               {SCALE.map((value) => {
@@ -217,7 +218,7 @@ export function PreRoundCheckIn({
           htmlFor="pre-round-notes"
           className="text-sm font-medium text-foreground"
         >
-          What&apos;s on your mind before today&apos;s round?
+          {t.checkIn.noteLabel}
         </label>
 
         <div className="relative mt-2">
@@ -225,7 +226,7 @@ export function PreRoundCheckIn({
             id="pre-round-notes"
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
-            placeholder="I want to stay present, trust my game, and not let one bad shot affect the next…"
+            placeholder={t.checkIn.notePlaceholder}
             rows={4}
             className="w-full rounded-2xl border border-border bg-surface px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
           />
@@ -235,7 +236,8 @@ export function PreRoundCheckIn({
               type="button"
               onClick={isListening ? stop : start}
               aria-pressed={isListening}
-              title={isListening ? "Stop listening" : "Speak your thoughts"}
+              title={isListening ? t.voice.stopListening : t.checkIn.speakThoughts}
+              aria-label={isListening ? t.voice.stopListening : t.checkIn.speakThoughts}
               className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
                 isListening
                   ? "border-forest bg-forest text-foreground"
@@ -251,14 +253,16 @@ export function PreRoundCheckIn({
         </div>
 
         {supported && isListening && (
-          <p className="mt-1.5 text-xs text-sage">Listening… tap the mic to stop.</p>
+          <p className="mt-1.5 text-xs text-sage">{t.voice.listening}</p>
         )}
-        {supported && error && (
-          <p className="mt-1.5 text-xs text-muted">{error}</p>
+        {supported && errorCode && (
+          <p className="mt-1.5 text-xs text-muted">
+            {t.voice.errors[errorCode] ?? t.voice.errors.other}
+          </p>
         )}
         {!supported && (
           <p className="mt-1.5 text-xs text-muted">
-            Voice input isn&apos;t supported in this browser — you can type instead.
+            {t.voice.unsupported}
           </p>
         )}
       </div>
@@ -269,7 +273,7 @@ export function PreRoundCheckIn({
         disabled={!isValid}
         className="mt-8 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light disabled:opacity-40 disabled:hover:bg-forest"
       >
-        Build My Pre-Game Routine
+        {t.checkIn.submit}
       </button>
       </div>
       </div>

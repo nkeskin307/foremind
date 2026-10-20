@@ -188,17 +188,3 @@ export function toCaddieCourseHistory(
     stateRoundCounts: history.stateRoundCounts,
   };
 }
-
-export function formatRoundDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "Unknown date";
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-}
-
-/** Averages can be fractional: "+2.5", "E", "−1.5". */
-export function formatAverageToPar(value: number): string {
-  const rounded = Math.round(value * 10) / 10;
-  if (rounded === 0) return "E";
-  const text = Number.isInteger(rounded) ? String(Math.abs(rounded)) : Math.abs(rounded).toFixed(1);
-  return rounded > 0 ? `+${text}` : `−${text}`;
-}
