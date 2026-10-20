@@ -102,6 +102,26 @@ type PastRound = {
   date: string;
 };
 
+// Mirrors CADDIE_LANGUAGES on the client; anything else falls back to English.
+const LANGUAGE_NAMES: Record<string, string> = {
+  "en-US": "English",
+  "tr-TR": "Turkish",
+  "es-ES": "Spanish",
+  "fr-FR": "French",
+  "de-DE": "German",
+  "it-IT": "Italian",
+  "pt-BR": "Portuguese",
+  "zh-CN": "Chinese (Simplified)",
+  "ja-JP": "Japanese",
+  "ko-KR": "Korean",
+  "ar-SA": "Arabic",
+};
+const DEFAULT_LANGUAGE = "en-US";
+const MAX_SPOKEN_WORDS = 60;
+// Chinese/Japanese don't separate words with spaces; ~120 characters is a
+// similar spoken length.
+const MAX_SPOKEN_CJK_CHARS = 120;
+
 const MAX_HISTORY_ROUNDS = 5;
 const MAX_COURSE_ROUNDS = 3;
 
@@ -405,6 +425,51 @@ function parsePastRounds(value: unknown): PastRound[] {
   }
 
   return rounds;
+}
+
+function parseLanguage(value: unknown): { code: string; name: string } {
+  const code = typeof value === "string" && value in LANGUAGE_NAMES ? value : DEFAULT_LANGUAGE;
+  return { code, name: LANGUAGE_NAMES[code] };
+}
+
+function buildReplyInstructions(
+  language: { code: string; name: string },
+  handsFree: boolean,
+): string {
+  const lines = [
+    `Reply language: the golfer's chosen language is ${language.name}. Reply in ${language.name}. However, if the golfer's message below is clearly written in a different language, reply in the language of their message instead. The context above is in English only for your reference; translate any mental-state names or quotes naturally.`,
+  ];
+  if (handsFree) {
+    lines.push(
+      `This reply will be read aloud while the golfer is on the course. Keep it under ${MAX_SPOKEN_WORDS} words (under ${MAX_SPOKEN_CJK_CHARS} characters in Chinese or Japanese): two or three short spoken sentences, no lists or symbols.`,
+    );
+  }
+  return lines.join("\n") + "\n\n";
+}
+
+/** Server-side guarantee that Hands-Free replies stay short enough to speak. */
+function limitSpokenReply(text: string): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  const isCjk = /[\u3040-\u30ff\u3400-\u9fff]/.test(clean) && clean.split(" ").length < 15;
+
+  const cutAtSentence = (cut: string, minLength: number): string => {
+    let end = -1;
+    for (const mark of [".", "!", "?", "。", "！", "？", "؟"]) {
+      end = Math.max(end, cut.lastIndexOf(mark));
+    }
+    return end >= minLength ? cut.slice(0, end + 1) : `${cut}…`;
+  };
+
+  if (isCjk) {
+    return clean.length <= MAX_SPOKEN_CJK_CHARS
+      ? clean
+      : cutAtSentence(clean.slice(0, MAX_SPOKEN_CJK_CHARS), 30);
+  }
+
+  const words = clean.split(" ");
+  if (words.length <= MAX_SPOKEN_WORDS) return clean;
+  const cut = words.slice(0, MAX_SPOKEN_WORDS).join(" ");
+  return cutAtSentence(cut, Math.floor(cut.length / 3));
 }
 
 function parseCourseHistory(value: unknown): CourseHistory | null {
@@ -915,7 +980,12 @@ export async function POST(request: Request) {
   }
   const courseBlock = buildCourseBlock(courseHistory);
 
-  const promptText = `${contextBlock}${courseBlock}${historyBlock}Golfer says: ${message.trim()}`;
+  const rawBody = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+  const language = parseLanguage(rawBody.language);
+  const handsFree = rawBody.mode === "hands-free";
+  const replyInstructions = buildReplyInstructions(language, handsFree);
+
+  const promptText = `${contextBlock}${courseBlock}${historyBlock}${replyInstructions}Golfer says: ${message.trim()}`;
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -933,7 +1003,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return Response.json({ response: result.text });
+    return Response.json({ response: handsFree ? limitSpokenReply(result.text) : result.text });
   } catch (error) {
     console.error("Failed to reach Gemini API:", error);
     return Response.json({ error: UNAVAILABLE_MESSAGE }, { status: 502 });

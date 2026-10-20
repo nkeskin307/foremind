@@ -111,7 +111,7 @@ export function PreRoundCheckIn({
     [savedValues],
   );
 
-  const { supported, isListening, start, stop } =
+  const { supported, isListening, error, start, stop } =
     useSpeechRecognition(handleTranscript);
 
   const { setPreRoundContext } = useCaddieContext();
@@ -252,6 +252,9 @@ export function PreRoundCheckIn({
 
         {supported && isListening && (
           <p className="mt-1.5 text-xs text-sage">Listening… tap the mic to stop.</p>
+        )}
+        {supported && error && (
+          <p className="mt-1.5 text-xs text-muted">{error}</p>
         )}
         {!supported && (
           <p className="mt-1.5 text-xs text-muted">

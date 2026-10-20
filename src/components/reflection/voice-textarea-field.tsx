@@ -16,7 +16,7 @@ export function VoiceTextareaField({
   onChange: (value: string) => void;
   rows?: number;
 }) {
-  const { supported, isListening, start, stop } = useSpeechRecognition(
+  const { supported, isListening, error, start, stop } = useSpeechRecognition(
     (transcript) => {
       onChange(value ? `${value} ${transcript}` : transcript);
     },
@@ -59,6 +59,9 @@ export function VoiceTextareaField({
 
       {supported && isListening && (
         <p className="mt-1.5 text-xs text-sage">Listening… tap the mic to stop.</p>
+      )}
+      {supported && error && (
+        <p className="mt-1.5 text-xs text-muted">{error}</p>
       )}
       {!supported && (
         <p className="mt-1.5 text-xs text-muted">
