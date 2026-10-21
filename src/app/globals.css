@@ -185,10 +185,12 @@ button.bg-forest:not(:disabled):hover {
 }
 
 /* The decorative flags are page-edge art. On narrow screens the text column
-   reaches the edges, so they would sit behind body text — hide them there. */
+   reaches the edges, so they sit behind body text — fade them right down
+   there (softer glow too) so the text always reads first. */
 @media (max-width: 767px) {
   .motif-flag-glow {
-    display: none;
+    opacity: 0.13 !important;
+    filter: drop-shadow(0 0 6px rgba(67, 233, 123, 0.35));
   }
 }
 
