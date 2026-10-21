@@ -68,6 +68,9 @@ export const it: Messages = {
       "Voglio restare nel presente, fidarmi del mio gioco e non lasciare che un brutto colpo influenzi il successivo…",
     speakThoughts: "Di' cosa pensi",
     submit: "Crea la mia routine pre-giro",
+    low: "Basso",
+    high: "Alto",
+    ratingName: (label: string, value: number) => `${label} ${value} su 5`,
   },
   routine: {
     title: "La tua routine pre-giro",
@@ -77,6 +80,16 @@ export const it: Messages = {
     physicalReset: "3. Reset fisico",
     ifWrong: "4. Se qualcosa va storto",
     start: "Inizia il mio giro →",
+    personalLine: (note: string, label: string, value: number, cue: string) =>
+      `Hai scritto «${note}». Il tuo punto più basso oggi: ${label} (${value}/5), quindi ${cue}.`,
+    personalRatingOnly: (label: string, value: number, cue: string) =>
+      `Il tuo punto più basso oggi: ${label} (${value}/5), quindi ${cue}.`,
+    personalNoteOnly: (note: string) => `Hai scritto «${note}»: tienilo a mente al primo tee.`,
+    lowestCue: {
+      focus: "scegli un bersaglio e un segnale prima di ogni colpo",
+      energy: "mantieni tutto semplice e risparmia energia tra un colpo e l'altro",
+      confidence: "impegnati fino in fondo in ogni scelta prima di colpire",
+    },
     resetReminder:
       "Lascia alle spalle l'ultimo colpo. Rilassa il corpo, scegli il prossimo bersaglio e impegnati.",
     low: {

@@ -18,7 +18,7 @@ import { useSpeechRecognition } from "@/lib/speech/use-speech-recognition";
 import type { CheckInField, CheckInRatings } from "@/lib/prepare/generate-routine";
 import { useCaddieContext } from "@/lib/caddie/caddie-context";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { checkInToQueryString, type CheckInQueryData } from "@/lib/prepare/check-in-params";
+import { EMPTY_CHECK_IN } from "@/lib/prepare/check-in-params";
 import {
   clearCheckInDraft,
   getCheckInDraftSnapshot,
@@ -51,11 +51,7 @@ function getServerEmptySnapshot() {
   return "";
 }
 
-export function PreRoundCheckIn({
-  initialCheckIn,
-}: {
-  initialCheckIn: CheckInQueryData;
-}) {
+export function PreRoundCheckIn() {
   const router = useRouter();
   const { t } = useI18n();
 
@@ -75,18 +71,18 @@ export function PreRoundCheckIn({
 
   // Priority: an in-progress draft, then a submitted check-in that hasn't
   // started a round yet (what makes Back from /routine show the same
-  // answers now that the draft is cleared on submit), then the URL.
+  // answers now that the draft is cleared on submit), then empty.
   const savedValues = useMemo<CheckInDraft>(() => {
     const draft = parseCheckInDraftSnapshot(rawDraft);
     const latest = parseLatestCheckInSnapshot(rawLatestCheckIn);
     const source = draft ?? (latest && !latest.handled ? latest : null);
     return {
-      focus: source?.focus ?? initialCheckIn.focus,
-      energy: source?.energy ?? initialCheckIn.energy,
-      confidence: source?.confidence ?? initialCheckIn.confidence,
-      note: source?.note ?? initialCheckIn.note,
+      focus: source?.focus ?? EMPTY_CHECK_IN.focus,
+      energy: source?.energy ?? EMPTY_CHECK_IN.energy,
+      confidence: source?.confidence ?? EMPTY_CHECK_IN.confidence,
+      note: source?.note ?? EMPTY_CHECK_IN.note,
     };
-  }, [rawDraft, rawLatestCheckIn, initialCheckIn]);
+  }, [rawDraft, rawLatestCheckIn]);
 
   // null until the golfer changes something; until then the saved values show.
   const [edits, setEdits] = useState<CheckInDraft | null>(null);
@@ -155,14 +151,13 @@ export function PreRoundCheckIn({
       confidence: ratings.confidence,
       note: notes.trim(),
     };
-    const query = checkInToQueryString(submitted);
-
-    // The submitted check-in becomes the "latest" one (used by /play and
-    // Restart Round); the draft is done and is cleared.
+    // The submitted check-in becomes the "latest" one, which /routine,
+    // /play and Restart Round read from localStorage (nothing goes in the
+    // URL). The draft is done and is cleared.
     saveLatestCheckIn(submitted);
     clearCheckInDraft();
 
-    router.push(`/routine?${query}`);
+    router.push("/routine");
   }
 
   return (
@@ -184,30 +179,40 @@ export function PreRoundCheckIn({
 
       <div className="mt-8 space-y-5">
         {RATING_FIELDS.map(({ key, Icon }) => (
-          <div key={key}>
-            <span className="flex items-center gap-1.5 text-sm font-medium text-foreground">
+          <div key={key} role="group" aria-labelledby={`rating-${key}-label`}>
+            <span
+              id={`rating-${key}-label`}
+              className="flex items-center gap-1.5 text-sm font-medium text-foreground"
+            >
               <Icon className="h-3.5 w-3.5 text-sage" />
               {t.checkIn[key]}
             </span>
-            <div className="mt-2 flex gap-2">
-              {SCALE.map((value) => {
-                const isSelected = ratings[key] === value;
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={isSelected}
-                    onClick={() => setRating(key, value)}
-                    className={`flex h-11 w-11 items-center justify-center rounded-full border text-sm font-medium transition-colors ${
-                      isSelected
-                        ? "border-forest bg-forest text-foreground"
-                        : "border-border bg-surface text-muted hover:border-forest"
-                    }`}
-                  >
-                    {value}
-                  </button>
-                );
-              })}
+            <div className="mt-2 inline-flex flex-col">
+              <div className="flex gap-2">
+                {SCALE.map((value) => {
+                  const isSelected = ratings[key] === value;
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={isSelected}
+                      aria-label={t.checkIn.ratingName(t.checkIn[key], value)}
+                      onClick={() => setRating(key, value)}
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border text-sm font-medium transition-colors ${
+                        isSelected
+                          ? "border-forest bg-forest text-foreground"
+                          : "border-border bg-surface text-muted hover:border-forest"
+                      }`}
+                    >
+                      {value}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-1 flex justify-between text-xs text-muted" aria-hidden="true">
+                <span>{t.checkIn.low}</span>
+                <span>{t.checkIn.high}</span>
+              </div>
             </div>
           </div>
         ))}

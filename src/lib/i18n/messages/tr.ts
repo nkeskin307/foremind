@@ -68,6 +68,9 @@ export const tr: Messages = {
       "Anda kalmak, oyunuma güvenmek ve kötü bir vuruşun sonrakini etkilemesine izin vermemek istiyorum…",
     speakThoughts: "Düşüncelerini söyle",
     submit: "Tur öncesi rutinimi oluştur",
+    low: "Düşük",
+    high: "Yüksek",
+    ratingName: (label: string, value: number) => `${label}, 5 üzerinden ${value}`,
   },
   routine: {
     title: "Tur öncesi rutinin",
@@ -77,6 +80,16 @@ export const tr: Messages = {
     physicalReset: "3. Fiziksel sıfırlama",
     ifWrong: "4. Bir şeyler ters giderse",
     start: "Turuma başla →",
+    personalLine: (note: string, label: string, value: number, cue: string) =>
+      `“${note}” yazdın. Bugün en düşük puanın ${label} (${value}/5); bu yüzden ${cue}.`,
+    personalRatingOnly: (label: string, value: number, cue: string) =>
+      `Bugün en düşük puanın ${label} (${value}/5); bu yüzden ${cue}.`,
+    personalNoteOnly: (note: string) => `“${note}” yazdın — ilk tee'de bunu aklında tut.`,
+    lowestCue: {
+      focus: "her vuruştan önce tek bir hedef ve tek bir ipucu seç",
+      energy: "işi basit tut ve vuruşlar arasında enerjini koru",
+      confidence: "vurmadan önce her kararına tamamen bağlı kal",
+    },
     resetReminder:
       "Son vuruşu geride bırak. Bedenini sıfırla, bir sonraki hedefini seç ve kararlı vur.",
     low: {

@@ -68,6 +68,9 @@ export const es: Messages = {
       "Quiero estar presente, confiar en mi juego y no dejar que un mal golpe afecte al siguiente…",
     speakThoughts: "Di lo que piensas",
     submit: "Crear mi rutina previa",
+    low: "Bajo",
+    high: "Alto",
+    ratingName: (label: string, value: number) => `${label} ${value} de 5`,
   },
   routine: {
     title: "Tu rutina previa",
@@ -77,6 +80,16 @@ export const es: Messages = {
     physicalReset: "3. Reinicio físico",
     ifWrong: "4. Si algo sale mal",
     start: "Empezar mi vuelta →",
+    personalLine: (note: string, label: string, value: number, cue: string) =>
+      `Escribiste «${note}». Tu punto más bajo hoy: ${label} (${value}/5), así que ${cue}.`,
+    personalRatingOnly: (label: string, value: number, cue: string) =>
+      `Tu punto más bajo hoy: ${label} (${value}/5), así que ${cue}.`,
+    personalNoteOnly: (note: string) => `Escribiste «${note}»: tenlo presente en el primer tee.`,
+    lowestCue: {
+      focus: "elige un objetivo y una señal antes de cada golpe",
+      energy: "mantenlo simple y ahorra energía entre golpes",
+      confidence: "comprométete del todo con cada decisión antes de golpear",
+    },
     resetReminder:
       "Deja atrás el último golpe. Relaja el cuerpo, elige tu próximo objetivo y comprométete.",
     low: {

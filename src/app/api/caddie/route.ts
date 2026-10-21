@@ -31,20 +31,11 @@ Do not pretend you can see the golfer's swing.
 
 Prefer one or two actionable ideas rather than long explanations.
 
-When relevant history exists, begin your response with one concrete observation from the golfer's past data before giving advice.
+Past rounds: only use what the "Golfer Memory", "Per-round detail" and "This course" sections below actually contain. When one of them supports it, you may begin with one concrete observation from that data before giving advice — for example a count of rounds in which a mental state was logged, a repeated reflection theme, or an average pre-round rating — using the exact numbers, states and words given there, then connect it to what is happening right now. Show the evidence; don't just say "you mentioned this before."
 
-Prefer specific evidence such as:
-"Rushed has appeared in 3 of your last 4 rounds."
-"You've mentioned carrying mistakes forward in two recent reflections."
-"Your average pre-round confidence across your last 3 rounds is 3/5."
-
-Do not simply say "you mentioned this before." Show the evidence that makes the memory useful.
-
-Then connect that pattern to what is happening right now.
+Never invent or estimate a past round, count, average, trend or pattern. Every number, mental state, course or quote you attribute to the golfer's history must appear in the provided data. If a section says the golfer has no saved past rounds, or no history section is provided, do not mention past rounds, previous reflections, patterns, trends, averages, "last time" or "usually" at all — talk only about today.
 
 Keep the full response concise.
-
-Never invent a pattern — only reference history when the golfer's saved data actually supports it. If there is no relevant pattern, skip the historical observation and focus only on the current round.
 
 When a "This course" section is provided, you may refer to it naturally (for example "Last time at this course you…"). If it says there are no previous rounds at this course, never claim or imply the golfer has played it before.
 
@@ -64,6 +55,7 @@ const RATE_LIMIT = { limit: 20, windowMs: 60_000 };
 const GEMINI_ATTEMPT_TIMEOUT_MS = 6_500;
 const RETRY_DELAY_MS = 1000;
 const MAX_ATTEMPTS = 2;
+const RESET_ATTEMPT_TIMEOUT_MS = 6_000;
 
 type PreRoundContext = {
   focus: number | null;
@@ -441,7 +433,7 @@ function buildReplyInstructions(
   reset: boolean,
 ): string {
   if (reset) {
-    return `This is a proactive reset card shown on the golfer's round screen — not a reply to a question. Write it in ${language.name}. Under ${MAX_RESET_WORDS} words (under ${MAX_RESET_CJK_CHARS} characters in Chinese), one or two calm sentences, plain text. Briefly name what happened and the hole number from the situation below, then give one simple reset cue for the next shot. Don't claim a mental state caused a score. If a past-rounds pattern is included, you may mention it in a few words.\n\n`;
+    return `This is a proactive reset card shown on the golfer's round screen — not a reply to a question. Write it in ${language.name}. Under ${MAX_RESET_WORDS} words (under ${MAX_RESET_CJK_CHARS} characters in Chinese), one or two calm sentences, plain text. Briefly name what happened and the hole number from the situation below, then give one simple reset cue for the next shot. Don't claim a mental state caused a score. If a past-rounds pattern is included in the situation, you may mention it in a few words, using its exact numbers; otherwise never mention past rounds or patterns.\n\n`;
   }
   const lines = [
     `Reply language: the golfer's chosen language is ${language.name}. Reply in ${language.name}. However, if the golfer's message below is clearly written in a different language, reply in the language of their message instead. The context above is in English only for your reference; translate any mental-state names or quotes naturally.`,
@@ -754,7 +746,9 @@ function formatGolferMemory(memory: GolferMemory): string {
 }
 
 function buildHistoryBlock(rounds: PastRound[], memory: GolferMemory | null): string {
-  if (rounds.length === 0) return "";
+  if (rounds.length === 0) {
+    return "Past rounds: the golfer has no saved past rounds. Do not mention past rounds, previous reflections, patterns, trends, averages or anything about other days. Talk only about today.\n\n";
+  }
 
   const perRoundLines = rounds.map((round, index) => {
     const lines: string[] = [];
@@ -821,7 +815,7 @@ function isServiceUnavailable(status: number, errorBody: string): boolean {
   );
 }
 
-function callGemini(apiKey: string, message: string): Promise<Response> {
+function callGemini(apiKey: string, message: string, timeoutMs: number): Promise<Response> {
   return callGeminiApi(
     GEMINI_MODEL,
     apiKey,
@@ -829,7 +823,7 @@ function callGemini(apiKey: string, message: string): Promise<Response> {
       systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
       contents: [{ role: "user", parts: [{ text: message }] }],
     },
-    GEMINI_ATTEMPT_TIMEOUT_MS,
+    timeoutMs,
   );
 }
 
@@ -840,9 +834,10 @@ type GeminiResult =
 async function fetchGeminiReply(
   apiKey: string,
   message: string,
+  { maxAttempts, timeoutMs }: { maxAttempts: number; timeoutMs: number },
 ): Promise<GeminiResult> {
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const geminiResponse = await callGemini(apiKey, message);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const geminiResponse = await callGemini(apiKey, message, timeoutMs);
 
     if (geminiResponse.ok) {
       const data = await geminiResponse.json();
@@ -859,12 +854,12 @@ async function fetchGeminiReply(
     const errorText = await geminiResponse.text();
     const busy = isServiceUnavailable(geminiResponse.status, errorText);
     console.error(
-      `Gemini API error (attempt ${attempt}/${MAX_ATTEMPTS}):`,
+      `Gemini API error (attempt ${attempt}/${maxAttempts}):`,
       geminiResponse.status,
       errorText,
     );
 
-    if (busy && attempt < MAX_ATTEMPTS) {
+    if (busy && attempt < maxAttempts) {
       await sleep(RETRY_DELAY_MS);
       continue;
     }
@@ -945,7 +940,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await fetchGeminiReply(apiKey, promptText);
+    // A reset card must answer inside the browser's 8 s limit, so it gets
+    // one shorter attempt; normal questions keep the retry.
+    const result = await fetchGeminiReply(
+      apiKey,
+      promptText,
+      reset
+        ? { maxAttempts: 1, timeoutMs: RESET_ATTEMPT_TIMEOUT_MS }
+        : { maxAttempts: MAX_ATTEMPTS, timeoutMs: GEMINI_ATTEMPT_TIMEOUT_MS },
+    );
 
     if (!result.ok) {
       return Response.json(

@@ -710,10 +710,10 @@ export function MentalGameDashboard() {
   return (
     <div className="relative overflow-hidden">
       <FlagstickMotif
-        className="motif-flag-glow pointer-events-none absolute -right-14 -top-12 h-[400px] w-auto opacity-[0.34] lg:h-[480px]"
+        className="motif-flag-glow pointer-events-none absolute -right-14 -top-12 h-[400px] w-auto opacity-[0.34] lg:h-[480px] max-xl:lg:hidden"
       />
       <FlagstickMotif
-        className="motif-flag-glow pointer-events-none absolute -bottom-14 -left-14 h-[420px] w-auto -scale-x-100 opacity-[0.28] lg:h-[500px]"
+        className="motif-flag-glow pointer-events-none absolute -bottom-14 -left-14 h-[420px] w-auto -scale-x-100 opacity-[0.28] lg:h-[500px] max-xl:lg:hidden"
       />
       <div className="relative mx-auto w-full max-w-md px-6 py-16 lg:max-w-4xl">
       <h1 className="motion-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">

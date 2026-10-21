@@ -68,6 +68,9 @@ export const fr: Messages = {
       "Je veux rester dans le présent, faire confiance à mon jeu et ne pas laisser un mauvais coup gâcher le suivant…",
     speakThoughts: "Dis ce que tu penses",
     submit: "Créer ma routine d'avant-partie",
+    low: "Faible",
+    high: "Élevé",
+    ratingName: (label: string, value: number) => `${label} ${value} sur 5`,
   },
   routine: {
     title: "Ta routine d'avant-partie",
@@ -77,6 +80,17 @@ export const fr: Messages = {
     physicalReset: "3. Remise à zéro physique",
     ifWrong: "4. Si quelque chose tourne mal",
     start: "Commencer ma partie →",
+    personalLine: (note: string, label: string, value: number, cue: string) =>
+      `Tu as écrit « ${note} ». Ton point le plus bas aujourd'hui : ${label} (${value}/5) — ${cue}.`,
+    personalRatingOnly: (label: string, value: number, cue: string) =>
+      `Ton point le plus bas aujourd'hui : ${label} (${value}/5) — ${cue}.`,
+    personalNoteOnly: (note: string) =>
+      `Tu as écrit « ${note} » — garde-le en tête au premier départ.`,
+    lowestCue: {
+      focus: "choisis une cible et un repère avant chaque coup",
+      energy: "reste simple et économise ton énergie entre les coups",
+      confidence: "engage-toi pleinement dans chaque choix avant de frapper",
+    },
     resetReminder:
       "Laisse le dernier coup derrière toi. Relâche ton corps, choisis ta prochaine cible et engage-toi.",
     low: {

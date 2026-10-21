@@ -71,6 +71,9 @@ export const en = {
       "I want to stay present, trust my game, and not let one bad shot affect the next…",
     speakThoughts: "Speak your thoughts",
     submit: "Build My Pre-Game Routine",
+    low: "Low",
+    high: "High",
+    ratingName: (label: string, value: number) => `${label} ${value} of 5`,
   },
   routine: {
     title: "Your Pre-Game Routine",
@@ -80,6 +83,16 @@ export const en = {
     physicalReset: "3. Physical Reset",
     ifWrong: "4. If Something Goes Wrong",
     start: "Start My Round →",
+    personalLine: (note: string, label: string, value: number, cue: string) =>
+      `You wrote “${note}”. Your lowest today is ${label} (${value}/5), so ${cue}.`,
+    personalRatingOnly: (label: string, value: number, cue: string) =>
+      `Your lowest today is ${label} (${value}/5), so ${cue}.`,
+    personalNoteOnly: (note: string) => `You wrote “${note}” — keep that with you on the first tee.`,
+    lowestCue: {
+      focus: "pick one target and one cue before every shot",
+      energy: "keep it simple and save energy between shots",
+      confidence: "commit fully to each decision before you swing",
+    },
     resetReminder:
       "Leave the last shot behind. Reset your body, pick your next target, and commit.",
     low: {

@@ -92,16 +92,7 @@ function LastTimeCard({ history }: { history: CourseHistory }) {
   );
 }
 
-function hasCheckInData(checkIn: PreRoundCheckIn): boolean {
-  return (
-    checkIn.focus !== null ||
-    checkIn.energy !== null ||
-    checkIn.confidence !== null ||
-    checkIn.note.trim().length > 0
-  );
-}
-
-export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
+export function RoundSetup() {
   const { t } = useI18n();
   const [course, setCourse] = useState("");
   const [holes, setHoles] = useState<HoleCount>(18);
@@ -128,18 +119,21 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
     [rawLatestCheckIn],
   );
 
-  // The URL carries the check-in on the normal prepare → routine → play
-  // path. When it's missing (Restart Round, "Start a Round" from My Mental
-  // Game), fall back to the latest submitted check-in.
-  const roundPreRound = useMemo<PreRoundCheckIn>(() => {
-    if (hasCheckInData(preRound) || !latestCheckIn) return preRound;
-    return {
-      focus: latestCheckIn.focus,
-      energy: latestCheckIn.energy,
-      confidence: latestCheckIn.confidence,
-      note: latestCheckIn.note,
-    };
-  }, [preRound, latestCheckIn]);
+  // The check-in comes from localStorage (the latest submitted one), never
+  // the URL — on the normal prepare → routine → play path and after
+  // Restart Round or "Start a Round" alike.
+  const roundPreRound = useMemo<PreRoundCheckIn>(
+    () =>
+      latestCheckIn
+        ? {
+            focus: latestCheckIn.focus,
+            energy: latestCheckIn.energy,
+            confidence: latestCheckIn.confidence,
+            note: latestCheckIn.note,
+          }
+        : { focus: null, energy: null, confidence: null, note: "" },
+    [latestCheckIn],
+  );
 
   const resumedRound = resumeChoice === "new" ? null : activeRound;
 

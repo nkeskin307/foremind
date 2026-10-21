@@ -18,10 +18,11 @@ import {
   loadActiveRound,
 } from "@/lib/play/active-round-storage";
 import { clearCheckInDraft } from "@/lib/prepare/check-in-draft-storage";
-import { checkInToQueryString } from "@/lib/prepare/check-in-params";
 import {
   clearLatestCheckIn,
   loadLatestCheckIn,
+  markLatestCheckInHandled,
+  saveLatestCheckIn,
 } from "@/lib/prepare/latest-check-in-storage";
 
 type ConfirmAction = "restart-round" | "start-over" | null;
@@ -56,17 +57,22 @@ export function AppHeader() {
 
   function handleConfirm() {
     if (confirmAction === "restart-round") {
-      // Carry the latest check-in into the restarted round (falling back to
-      // the round's own check-in for rounds started before it was stored).
-      const checkIn = loadLatestCheckIn() ?? loadActiveRound()?.preRound ?? null;
-      const query = checkIn ? checkInToQueryString(checkIn) : "";
+      // The restarted round uses the latest check-in from localStorage. For
+      // rounds started before that was stored, save the round's own check-in
+      // there first so it carries over.
+      const activePreRound = loadActiveRound()?.preRound ?? null;
+      if (!loadLatestCheckIn() && activePreRound) {
+        saveLatestCheckIn(activePreRound);
+        markLatestCheckInHandled();
+      }
       clearActiveRound();
       // A full navigation, not router.push: Restart Round can be triggered
       // while already on /play, where a client-side push to the same route
       // wouldn't remount the page — leaving the in-memory round mounted, its
       // autosave effect would then immediately re-write the just-cleared
       // round straight back into localStorage.
-      window.location.href = query ? `/play?${query}` : "/play";
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
+      window.location.href = "/play";
     } else if (confirmAction === "start-over") {
       clearActiveRound();
       clearCheckInDraft();
@@ -186,16 +192,22 @@ export function AppHeader() {
             <MicIcon className="h-4 w-4" />
             {t.header.askCaddie}
           </button>
-          {/* Phones: a floating button at the bottom right, reachable with one thumb. */}
-          <button
-            type="button"
-            onClick={openPanel}
-            aria-label={t.header.askCaddie}
-            className="caddie-glow fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-forest text-foreground shadow-lg shadow-black/40 hover:bg-forest-light sm:hidden"
-            style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+          {/* Phones: Ask My Caddie lives in a bottom bar, reachable with one
+              thumb. The body reserves its height (pb-28), so page buttons can
+              always scroll clear of it instead of sitting underneath. */}
+          <div
+            className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 px-4 pt-3 sm:hidden"
+            style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
           >
-            <MicIcon className="h-6 w-6" />
-          </button>
+            <button
+              type="button"
+              onClick={openPanel}
+              className="caddie-glow flex min-h-12 w-full items-center justify-center gap-2 rounded-full border border-forest bg-sage-soft px-5 text-sm font-semibold text-foreground hover:bg-forest"
+            >
+              <MicIcon className="h-5 w-5" />
+              {t.header.askCaddie}
+            </button>
+          </div>
         </div>
       </header>
 

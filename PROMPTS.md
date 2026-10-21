@@ -172,3 +172,15 @@ Stage 9: Final polish, safety and cleanup before the demo. Keep changes minimal,
 8. Enter sends a Caddie message (Shift+Enter for a new line).
 Run npm run lint and npm run build. Then give me a final test checklist covering the whole journey on desktop and iPhone: check-in, 9- and 18-hole rounds, par and scoring, moods, Caddie by text and voice, Hands-Free, each Proactive trigger, reflection with and without a photo, Round Recap, My Mental Game with real and sample data, course comparison, language switching, refresh mid-round, Back/Restart/Start Over, and AI failure fallback.
 ```
+
+## Sprint 2 — Oct 21 — Stage 10: Usability review fixes (375px)
+
+Stage 10: Fix issues from a usability review of the live app at 375px. Keep changes minimal, all new text in all 7 languages.
+1. The round Ask My Caddie button overlaps "Next Hole" and "Build My Pre-Game Routine" on phones. Reserve space for it or move it above the bottom action buttons.
+2. The caddie claimed "Rushed has appeared in 3 of your last 4 rounds" when history was empty. The prompt must forbid citing past rounds or patterns that aren't in the provided data, and if history is empty it must not mention past rounds.
+3. The Pause & reset AI request returned 502 and the card stayed on "Your caddie has a quick reset…" for ~14 s. Enforce the 8-second timeout in the browser and show the fallback immediately on any error.
+4. The check-in note travels in the URL (/routine?…&note=…). Pass the check-in through localStorage instead of query parameters.
+5. Fade or move the decorative flag lines so they never sit behind body text.
+6. Add "low"/"high" labels to the 1–5 ratings and accessible names like "Focus 3 of 5".
+7. Make the routine include one line based on the check-in note and the lowest rating.
+Run lint and build and give me a short manual test.

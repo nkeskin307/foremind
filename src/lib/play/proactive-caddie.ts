@@ -219,7 +219,7 @@ export function describeBlowUpPattern(rounds: CompletedRound[]): string | null {
  * Returns null on any failure or after RESET_TIMEOUT_MS, so the caller
  * can show the static fallback instead.
  */
-export async function fetchResetMessage({
+export function fetchResetMessage({
   hit,
   pattern,
   language,
@@ -231,25 +231,38 @@ export async function fetchResetMessage({
   context: unknown;
 }): Promise<string | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), RESET_TIMEOUT_MS);
   const situation = `Proactive reset card for hole ${hit.hole}. Trigger: ${hit.trigger}. What happened: ${hit.reason}.${
     pattern ? ` ${pattern}` : ""
   }`;
 
-  try {
-    const res = await fetch("/api/caddie", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: situation, context, language, mode: "reset" }),
-      signal: controller.signal,
-    });
-    const data = await res.json();
-    return res.ok && typeof data.response === "string" && data.response.trim()
-      ? data.response.trim()
-      : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const request = (async (): Promise<string | null> => {
+    try {
+      const res = await fetch("/api/caddie", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: situation, context, language, mode: "reset" }),
+        signal: controller.signal,
+      });
+      // Any error status (502, 503, 429…) → fallback straight away.
+      if (!res.ok) return null;
+      const data = await res.json();
+      return typeof data?.response === "string" && data.response.trim()
+        ? data.response.trim()
+        : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  // The limit is enforced here in the browser: whatever the network or the
+  // server does, the card gets its answer (or null → fallback) by 8 s.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(null);
+    }, RESET_TIMEOUT_MS);
+  });
+
+  return Promise.race([request, timeout]).finally(() => clearTimeout(timer));
 }

@@ -14,7 +14,7 @@ export function LandingContent() {
         aria-hidden="true"
       />
       <FlagstickMotif
-        className="motif-flag-glow pointer-events-none absolute -right-20 top-1/2 h-[620px] w-auto -translate-y-1/2 opacity-[0.4] sm:-right-10"
+        className="motif-flag-glow pointer-events-none absolute -right-20 top-1/2 h-[620px] max-lg:hidden w-auto -translate-y-1/2 opacity-[0.4] sm:-right-10"
       />
       <FlagstickMotif
         className="motif-flag-glow pointer-events-none absolute -left-24 bottom-0 h-[400px] w-auto -scale-x-100 opacity-[0.3]"

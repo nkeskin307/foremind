@@ -68,6 +68,9 @@ export const de: Messages = {
       "Ich will im Moment bleiben, meinem Spiel vertrauen und einen schlechten Schlag nicht den nächsten beeinflussen lassen…",
     speakThoughts: "Gedanken aussprechen",
     submit: "Meine Routine erstellen",
+    low: "Niedrig",
+    high: "Hoch",
+    ratingName: (label: string, value: number) => `${label} ${value} von 5`,
   },
   routine: {
     title: "Deine Routine vor der Runde",
@@ -77,6 +80,17 @@ export const de: Messages = {
     physicalReset: "3. Körperlicher Reset",
     ifWrong: "4. Wenn etwas schiefgeht",
     start: "Runde starten →",
+    personalLine: (note: string, label: string, value: number, cue: string) =>
+      `Du hast geschrieben: „${note}“. Dein niedrigster Wert heute: ${label} (${value}/5) – ${cue}.`,
+    personalRatingOnly: (label: string, value: number, cue: string) =>
+      `Dein niedrigster Wert heute: ${label} (${value}/5) – ${cue}.`,
+    personalNoteOnly: (note: string) =>
+      `Du hast geschrieben: „${note}“ – nimm das mit an den ersten Abschlag.`,
+    lowestCue: {
+      focus: "wähle vor jedem Schlag ein Ziel und ein Signal",
+      energy: "halte es einfach und spare Energie zwischen den Schlägen",
+      confidence: "steh vor jedem Schwung voll hinter deiner Entscheidung",
+    },
     resetReminder:
       "Lass den letzten Schlag hinter dir. Lockere deinen Körper, wähle dein nächstes Ziel und leg dich fest.",
     low: {

@@ -62,6 +62,9 @@ export const zh: Messages = {
     notePlaceholder: "我想活在当下，相信自己的球技，不让一杆坏球影响下一杆…",
     speakThoughts: "说出你的想法",
     submit: "生成我的赛前流程",
+    low: "低",
+    high: "高",
+    ratingName: (label: string, value: number) => `${label}：5 分中的 ${value} 分`,
   },
   routine: {
     title: "你的赛前流程",
@@ -71,6 +74,16 @@ export const zh: Messages = {
     physicalReset: "3. 身体重置",
     ifWrong: "4. 如果出了状况",
     start: "开始这一轮 →",
+    personalLine: (note: string, label: string, value: number, cue: string) =>
+      `你写道：“${note}”。今天最低的是${label}（${value}/5），所以${cue}。`,
+    personalRatingOnly: (label: string, value: number, cue: string) =>
+      `今天最低的是${label}（${value}/5），所以${cue}。`,
+    personalNoteOnly: (note: string) => `你写道：“${note}”——在第一个发球台记住这一点。`,
+    lowestCue: {
+      focus: "每一杆前选好一个目标和一个提示",
+      energy: "保持简单，在两杆之间节省体力",
+      confidence: "挥杆前对每个决定全力投入",
+    },
     resetReminder: "把上一杆留在身后。放松身体，选好下一个目标，然后坚定出杆。",
     low: {
       focus: {

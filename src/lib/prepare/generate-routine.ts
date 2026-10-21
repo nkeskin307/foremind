@@ -71,3 +71,41 @@ export function generateRoutine(
   const keywordField = detectKeywordField(notes);
   return toRoutine(keywordField ? LOW_MESSAGES[keywordField] : NEUTRAL_MESSAGE);
 }
+
+const MAX_NOTE_CHARS = 70;
+
+function shortenNote(note: string): string {
+  const clean = note.trim().replace(/\s+/g, " ");
+  const chars = Array.from(clean);
+  return chars.length <= MAX_NOTE_CHARS
+    ? clean
+    : `${chars.slice(0, MAX_NOTE_CHARS - 1).join("").trimEnd()}…`;
+}
+
+/**
+ * One personal line for the top of the routine, built from the check-in
+ * note and the lowest rating (ties go by FIELD_PRIORITY). Null when there
+ * is neither a note nor a rating to build it from.
+ */
+export function personalRoutineLine(
+  ratings: CheckInRatings,
+  notes: string,
+  messages: Messages,
+): string | null {
+  const text = messages.routine;
+  const rated = FIELD_PRIORITY.filter((field) => ratings[field] !== null);
+  const note = notes.trim() ? shortenNote(notes) : "";
+
+  if (rated.length === 0) return note ? text.personalNoteOnly(note) : null;
+
+  const lowest = rated.reduce((low, field) =>
+    (ratings[field] as number) < (ratings[low] as number) ? field : low,
+  );
+  const label = messages.checkIn[lowest];
+  const rating = ratings[lowest] as number;
+  const cue = text.lowestCue[lowest];
+
+  return note
+    ? text.personalLine(note, label, rating, cue)
+    : text.personalRatingOnly(label, rating, cue);
+}

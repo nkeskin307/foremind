@@ -1,20 +1,43 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useSyncExternalStore } from "react";
 import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
-import { generateRoutine } from "@/lib/prepare/generate-routine";
-import { checkInToQueryString, type CheckInQueryData } from "@/lib/prepare/check-in-params";
+import { generateRoutine, personalRoutineLine } from "@/lib/prepare/generate-routine";
+import { EMPTY_CHECK_IN } from "@/lib/prepare/check-in-params";
+import {
+  getLatestCheckInSnapshot,
+  parseLatestCheckInSnapshot,
+} from "@/lib/prepare/latest-check-in-storage";
 import { useI18n } from "@/lib/i18n/use-i18n";
 
-export function RoutineView({ checkIn }: { checkIn: CheckInQueryData }) {
+const SERVER_SNAPSHOT = "__server__";
+
+function subscribeToNothing() {
+  return () => {};
+}
+
+function getServerSnapshot() {
+  return SERVER_SNAPSHOT;
+}
+
+export function RoutineView() {
   const { t } = useI18n();
-  const routine = generateRoutine(
-    { focus: checkIn.focus, energy: checkIn.energy, confidence: checkIn.confidence },
-    checkIn.note,
-    t,
+  // The check-in comes from localStorage (saved on submit), not the URL.
+  const rawCheckIn = useSyncExternalStore(
+    subscribeToNothing,
+    getLatestCheckInSnapshot,
+    getServerSnapshot,
   );
-  const forwardedQuery = checkInToQueryString(checkIn);
-  const playHref = forwardedQuery ? `/play?${forwardedQuery}` : "/play";
+  const isServer = rawCheckIn === SERVER_SNAPSHOT;
+  const checkIn = useMemo(
+    () => (isServer ? null : parseLatestCheckInSnapshot(rawCheckIn)) ?? EMPTY_CHECK_IN,
+    [isServer, rawCheckIn],
+  );
+
+  const ratings = { focus: checkIn.focus, energy: checkIn.energy, confidence: checkIn.confidence };
+  const routine = generateRoutine(ratings, checkIn.note, t);
+  const personalLine = personalRoutineLine(ratings, checkIn.note, t);
 
   const sections = [
     { title: t.routine.focusToday, text: routine.focusMindset },
@@ -35,27 +58,36 @@ export function RoutineView({ checkIn }: { checkIn: CheckInQueryData }) {
         <h1 className="motion-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
           {t.routine.title}
         </h1>
-        <div className="motion-body">
-          <p className="mt-2 text-base text-muted">{t.routine.subtitle}</p>
+        {/* Wait for the saved check-in so the routine never flashes a generic version. */}
+        {!isServer && (
+          <div className="motion-body">
+            <p className="mt-2 text-base text-muted">{t.routine.subtitle}</p>
 
-          <div className="mt-8 space-y-6">
-            {sections.map((section) => (
-              <section key={section.title}>
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-sage">
-                  {section.title}
-                </h2>
-                <p className="mt-2 text-sm text-foreground">{section.text}</p>
-              </section>
-            ))}
+            {personalLine && (
+              <p className="mt-6 rounded-2xl border border-forest bg-sage-soft px-4 py-3 text-sm text-foreground">
+                {personalLine}
+              </p>
+            )}
+
+            <div className="mt-8 space-y-6">
+              {sections.map((section) => (
+                <section key={section.title}>
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-sage">
+                    {section.title}
+                  </h2>
+                  <p className="mt-2 text-sm text-foreground">{section.text}</p>
+                </section>
+              ))}
+            </div>
+
+            <Link
+              href="/play"
+              className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
+            >
+              {t.routine.start}
+            </Link>
           </div>
-
-          <Link
-            href={playHref}
-            className="mt-10 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
-          >
-            {t.routine.start}
-          </Link>
-        </div>
+        )}
       </div>
     </div>
   );
