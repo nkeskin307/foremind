@@ -124,3 +124,34 @@ Stage 6: Add Photo Memories. Keep changes minimal, reuse existing components and
 5. All new text must use the existing translation dictionaries in all 7 languages.
 Run npm run lint and npm run build. Summarize the files you changed and give me a manual test for Chrome on Mac and Safari on iPhone.
 ```
+
+---
+
+## Sprint 2 — Oct 20 — Stage 7: Polish My Mental Game and fix leftover bugs
+
+```text
+Stage 7: Polish My Mental Game and fix leftover bugs. Keep changes minimal, reuse existing components and styles, no backend. All new text must use the translation dictionaries in all 7 languages.
+1. Dashboard: make patterns easy to read at a glance on a phone. Show rounds played, average score vs par (scored holes only), most common mental states, score vs par by mental state, how the first hole relates to the rest of the round, and Recovery after reset. Show empty states that explain what unlocks each insight (for example "Play 3 rounds to see patterns").
+2. Sample data: add a "Load sample rounds" button that adds 6 realistic example rounds across 2 courses, including a few Proactive Caddie interventions and one photo-free round per course. Mark each with sample: true and show a visible SAMPLE badge everywhere they appear. Add a "Clear sample data" button. Sample rounds must never be mixed with real rounds without the badge, and must not be sent to the Caddie as real history.
+3. Reflection URL: stop passing the whole round as JSON in the /reflection URL. Use /reflection?id=<roundId> and load the round by id; show a friendly message with a link to My Mental Game if it isn't found.
+4. Skipped reflections: add a "Reflect now" button on any completed round with an empty reflection.
+5. Dashboard refresh: update in the same tab when rounds or analyses change, not only on the storage event. If a post-round analysis is stuck at "preparing" for more than 30 seconds or failed, show a "Retry analysis" button.
+6. Validate saved rounds when reading them so one badly shaped entry can't crash the dashboard or the Caddie; skip it and log a warning.
+7. Fix the desktop dashboard grid so the right column isn't clipped at the lg breakpoint.
+Run npm run lint and npm run build. Summarize the files you changed and give me a manual test.
+```
+
+---
+
+## Sprint 2 — Oct 20 — Stage 8: Round Recap (post-round review restructure)
+
+```text
+Restructure the post-round AI review into a "Round Recap". Keep changes minimal, reuse existing card styles, and use the translation dictionaries for all labels in all 7 languages.
+1. Headline: one sentence summarizing the round's mental story.
+2. At a glance: score vs par (scored holes only), best stretch, toughest hole, number of moods logged, number of Pause & reset cards. Computed in code, not by AI.
+3. Turning point: the hole where the round changed (bounce-back or slide) and why, based on logged moods and scores.
+4. What worked: 1–2 bullets that cite specific holes and the golfer's own reflection words.
+5. Try this next round: exactly one concrete, specific action.
+6. Pattern watch: only shown when there are at least 3 earlier real rounds; compare with past rounds or the same course. Hide it otherwise.
+The AI parts (headline, turning point, what worked, try this, pattern watch) must stay under 120 words total, in the chosen language, and never give generic advice that isn't tied to this round. Keep the non-AI fallback, restructured the same way. Update the JSON schema in /api/post-round-analysis, migrate old saved analyses so they still display, and update the sample rounds to the new format. Run lint and build and give me a manual test.
+```
