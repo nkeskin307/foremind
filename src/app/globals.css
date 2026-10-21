@@ -18,7 +18,7 @@
   --color-sage: #9cb79e;
   --color-surface: #171d18;
   --color-sage-soft: #1a2420;
-  --color-muted: #a4aea2;
+  --color-muted: #b4beb2; /* brightened for outdoor (sunlight) readability */
   --color-border: #2b332c;
 
   /* A brighter, more saturated green reserved for the golf-flag motifs —

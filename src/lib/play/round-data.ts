@@ -94,9 +94,12 @@ export function normalizeMentalNotes(value: unknown, holes: number): (string | n
   });
 }
 
+/** Rounds have at most 36 holes — a corrupted huge value can't freeze the page. */
+const MAX_HOLES = 36;
+
 export function normalizeHoleCount(holes: unknown, scores: unknown): number {
-  if (typeof holes === "number" && Number.isInteger(holes) && holes > 0) return holes;
-  return Array.isArray(scores) && scores.length > 0 ? scores.length : 18;
+  if (typeof holes === "number" && Number.isInteger(holes) && holes > 0) return Math.min(holes, MAX_HOLES);
+  return Array.isArray(scores) && scores.length > 0 ? Math.min(scores.length, MAX_HOLES) : 18;
 }
 
 function emptyRoundData(): RoundData {

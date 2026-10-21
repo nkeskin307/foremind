@@ -8,6 +8,7 @@ import { ChevronDownIcon } from "@/components/icons/chevron-down-icon";
 import { MicIcon } from "@/components/icons/mic-icon";
 import { RotateIcon } from "@/components/icons/rotate-icon";
 import { HomeIcon } from "@/components/icons/home-icon";
+import { ShieldIcon } from "@/components/icons/shield-icon";
 import { useCaddieContext } from "@/lib/caddie/caddie-context";
 import { useI18n } from "@/lib/i18n/use-i18n";
 import { LanguageMenuItems } from "@/components/i18n/language-switcher";
@@ -34,6 +35,7 @@ export function AppHeader() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [hasActiveRound, setHasActiveRound] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [showAbout, setShowAbout] = useState(false);
 
   if (pathname === "/") return null;
 
@@ -85,7 +87,7 @@ export function AppHeader() {
             <button
               type="button"
               onClick={() => router.back()}
-              className="flex items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-foreground"
+              className="-ml-2 flex min-h-11 items-center gap-1.5 px-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
             >
               <ArrowLeftIcon className="h-4 w-4" />
               {t.common.back}
@@ -97,7 +99,7 @@ export function AppHeader() {
                 onClick={toggleMenu}
                 aria-expanded={isMenuOpen}
                 aria-haspopup="menu"
-                className="flex items-center gap-1 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground"
+                className="flex min-h-11 items-center gap-1 rounded-full border border-border bg-surface px-4 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground"
               >
                 {t.header.session}
                 <ChevronDownIcon className="h-3.5 w-3.5" />
@@ -118,7 +120,7 @@ export function AppHeader() {
                           closeMenu();
                           setConfirmAction("restart-round");
                         }}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
+                        className="flex min-h-11 w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
                       >
                         <RotateIcon className="h-3.5 w-3.5 shrink-0 text-sage" />
                         {t.header.restartRound}
@@ -131,7 +133,7 @@ export function AppHeader() {
                         closeMenu();
                         setConfirmAction("start-over");
                       }}
-                      className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
+                      className="flex min-h-11 w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
                     >
                       <RotateIcon className="h-3.5 w-3.5 shrink-0 text-sage" />
                       {t.header.startOver}
@@ -150,12 +152,24 @@ export function AppHeader() {
                           clearCheckInDraft();
                           clearLatestCheckIn();
                         }}
-                        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
+                        className="flex min-h-11 w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
                       >
                         <HomeIcon className="h-3.5 w-3.5 shrink-0 text-sage" />
                         {t.header.endSession}
                       </Link>
                     )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        closeMenu();
+                        setShowAbout(true);
+                      }}
+                      className="flex min-h-11 w-full items-center gap-2.5 px-4 py-2.5 text-left text-sm text-foreground transition-colors hover:bg-sage-soft"
+                    >
+                      <ShieldIcon className="h-3.5 w-3.5 shrink-0 text-sage" />
+                      {t.header.about}
+                    </button>
                     <LanguageMenuItems onPick={closeMenu} />
                   </div>
                 </>
@@ -172,16 +186,50 @@ export function AppHeader() {
             <MicIcon className="h-4 w-4" />
             {t.header.askCaddie}
           </button>
+          {/* Phones: a floating button at the bottom right, reachable with one thumb. */}
           <button
             type="button"
             onClick={openPanel}
             aria-label={t.header.askCaddie}
-            className="caddie-glow flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-forest text-foreground hover:bg-forest-light sm:hidden"
+            className="caddie-glow fixed right-5 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-forest text-foreground shadow-lg shadow-black/40 hover:bg-forest-light sm:hidden"
+            style={{ bottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
           >
-            <MicIcon className="h-4 w-4" />
+            <MicIcon className="h-6 w-6" />
           </button>
         </div>
       </header>
+
+      {showAbout && (
+        <div
+          className="motion-fade fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6"
+          onClick={() => setShowAbout(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="about-heading"
+            onClick={(event) => event.stopPropagation()}
+            className="motion-modal max-h-[85vh] w-full max-w-sm overflow-y-auto rounded-2xl border border-border bg-surface p-6"
+          >
+            <h2 id="about-heading" className="text-base font-semibold text-foreground">
+              {t.about.title}
+            </h2>
+            <div className="mt-3 space-y-3 text-sm text-foreground">
+              <p>{t.about.whatIs}</p>
+              <p>{t.about.privacy}</p>
+              <p className="text-muted">{t.about.aiNote}</p>
+              <p className="rounded-xl border border-forest bg-sage-soft px-3 py-2">{t.about.notMedical}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowAbout(false)}
+              className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
+            >
+              {t.common.close}
+            </button>
+          </div>
+        </div>
+      )}
 
       {confirmAction && (
         <div

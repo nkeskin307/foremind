@@ -33,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-background pb-10 font-sans text-foreground">
+      <body className="flex min-h-full flex-col bg-background pb-28 font-sans sm:pb-10 text-foreground">
         <HtmlLang />
         <CaddieContextProvider>
           <AppHeader />

@@ -523,7 +523,7 @@ function RoundCard({
         type="button"
         onClick={onToggle}
         aria-expanded={isExpanded}
-        className="flex w-full items-center justify-between gap-4 text-left"
+        className="flex min-h-11 w-full items-center justify-between gap-4 text-left"
       >
         <div className="flex min-w-0 items-center gap-3">
           <RoundPhoto
@@ -571,7 +571,7 @@ function RoundCard({
       {status === "none" && (
         <Link
           href={`/reflection?id=${encodeURIComponent(round.id)}`}
-          className="mt-3 inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
+          className="min-h-11 mt-3 inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
         >
           {t.dashboard.reflectNow}
         </Link>
@@ -602,7 +602,7 @@ function RoundCard({
                 <button
                   type="button"
                   onClick={retryAnalysis}
-                  className="mt-2 inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
+                  className="min-h-11 mt-2 inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
                 >
                   {t.dashboard.retryAnalysis}
                 </button>
@@ -886,7 +886,7 @@ export function MentalGameDashboard() {
             )}
             <Link
               href="/mental-game/log"
-              className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-sage transition-colors hover:text-foreground"
+              className="mt-3 inline-flex min-h-11 items-center gap-1 text-sm font-medium text-sage transition-colors hover:text-foreground"
             >
               {t.dashboard.viewAll}
             </Link>

@@ -1,4 +1,4 @@
-# ForeCalm — Product Plan
+# Fore!Mind — Product Plan
 
 ## Problem
 
@@ -20,7 +20,7 @@ composure, focus, and recovery skills before, during, and after a round.
 
 ## Value proposition
 
-ForeCalm is an AI-powered mental-game companion that helps golfers check in
+Fore!Mind is an AI-powered mental-game companion that helps golfers check in
 with how they're feeling, prepare mentally before a round, reset after a
 bad shot, and reflect afterward — turning the invisible mental side of golf
 into something a player can actively train, the same way they train their
@@ -40,7 +40,7 @@ swing.
    frustration, or pressure in real time.
 5. **Reflect** — After the round, the golfer reflects on how their mental
    state affected their play.
-6. **Learn** — Over time, ForeCalm surfaces insights connecting mindset to
+6. **Learn** — Over time, Fore!Mind surfaces insights connecting mindset to
    performance.
 
 ## Planned five core features
@@ -48,7 +48,7 @@ swing.
 1. **AI Pre-Round Routine** — Generates a personalized mental warm-up from
    the golfer's check-in and history.
 2. **Round + Reset Mode** (implemented) — In-round score entry and a quick
-   "reset" flow for recovering after a bad shot, so ForeCalm can later
+   "reset" flow for recovering after a bad shot, so Fore!Mind can later
    compare mental state against golf performance.
 3. **Voice AI Mental Coach** — A conversational voice coach for pressure,
    nerves, and frustration in the moment.

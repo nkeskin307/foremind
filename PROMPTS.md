@@ -155,3 +155,20 @@ Restructure the post-round AI review into a "Round Recap". Keep changes minimal,
 6. Pattern watch: only shown when there are at least 3 earlier real rounds; compare with past rounds or the same course. Hide it otherwise.
 The AI parts (headline, turning point, what worked, try this, pattern watch) must stay under 120 words total, in the chosen language, and never give generic advice that isn't tied to this round. Keep the non-AI fallback, restructured the same way. Update the JSON schema in /api/post-round-analysis, migrate old saved analyses so they still display, and update the sample rounds to the new format. Run lint and build and give me a manual test.
 ```
+
+---
+
+## Sprint 2 — Oct 21 — Stage 9: Final polish
+
+```text
+Stage 9: Final polish, safety and cleanup before the demo. Keep changes minimal, reuse existing components and styles, no backend. All new text must use the translation dictionaries in all 7 languages.
+1. Naming: replace every remaining "ForeCalm"/"forecalm" with "Fore!Mind"/"foremind" in package.json (name: "foremind"), README.md and docs/ (keep docs/prompt-log.md content as the Sprint 1 log, but add a note at the top that ForeCalm was the earlier name). Write a short README: what Fore!Mind is, features, how to run it locally (GEMINI_API_KEY in .env.local), and the live URL.
+2. Mobile pass at 375px: tap targets at least 44px, no horizontal scrolling, readable contrast outdoors, and Ask My Caddie reachable with one thumb.
+3. Popups: when the mood picker, unscored-holes warning or reset card is open, the header must be covered by the backdrop and not clickable.
+4. Errors: friendly messages and a retry for AI failures (503, rate limits), a 15-second timeout on Caddie calls, and safe handling of corrupted localStorage everywhere.
+5. Trust: add a short About & Privacy section (in the header menu): data stays on this device; Fore!Mind is performance coaching, not medical or mental-health treatment. If a golfer's message suggests serious distress, the Caddie responds kindly and suggests talking to someone they trust or a professional.
+6. API safety: limit message length and history size on /api/caddie and /api/post-round-analysis, send the Gemini key in the x-goog-api-key header instead of the URL, and add simple per-IP rate limiting in memory. Confirm the key is never exposed to the browser.
+7. Remove all temporary debug console.logs, including the dev-only course history log.
+8. Enter sends a Caddie message (Shift+Enter for a new line).
+Run npm run lint and npm run build. Then give me a final test checklist covering the whole journey on desktop and iPhone: check-in, 9- and 18-hole rounds, par and scoring, moods, Caddie by text and voice, Hands-Free, each Proactive trigger, reflection with and without a photo, Round Recap, My Mental Game with real and sample data, course comparison, language switching, refresh mid-round, Back/Restart/Start Over, and AI failure fallback.
+```

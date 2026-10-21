@@ -21,7 +21,6 @@ import {
   withoutSamples,
   toCaddieHistoryPayload,
   type CaddieHistoryRound,
-  type CompletedRound,
 } from "@/lib/mental-game/completed-rounds";
 import {
   buildCourseHistories,
@@ -46,29 +45,18 @@ function getServerFalse() {
   return false;
 }
 
-// TEMPORARY DEV-ONLY DIAGNOSTIC LOGGING (requested to verify the localStorage
-// history flow). Reports key names, a round count, and dates only — never
-// reflection text or other sensitive content. Safe to remove once verified.
-function logCaddieLocalStorageDebugInfo(completedRounds: CompletedRound[]): void {
-  if (process.env.NODE_ENV === "production") return;
-  if (typeof window === "undefined") return;
-
-  const foreMindKeys = Object.keys(window.localStorage).filter((key) =>
-    key.startsWith("foremind:"),
-  );
-
-  console.log("[caddie] localStorage check on Caddie open:", {
-    foreMindKeys,
-    completedRoundsFound: completedRounds.length,
-    dates: completedRounds.map((round) => round.date),
-  });
-}
+/** Client-side limit for a Caddie call (the server also caps its own Gemini time). */
+const CADDIE_TIMEOUT_MS = 15_000;
+/** Matches the server's message limit. */
+const MAX_MESSAGE_CHARS = 1000;
 
 export function MentalCaddie() {
   const pathname = usePathname();
   const [message, setMessage] = useState("");
   const [response, setResponse] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  // The last typed question that failed, so "Try again" can resend it.
+  const [failedQuestion, setFailedQuestion] = useState<string | null>(null);
   const [view, setView] = useState<"ask" | "history">("ask");
 
   // One app-wide language drives the UI, speech recognition, read-aloud and replies.
@@ -128,7 +116,6 @@ export function MentalCaddie() {
 
     // Sample rounds are example data — never sent to the Caddie as real history.
     const allCompletedRounds = withoutSamples(loadCompletedRounds());
-    logCaddieLocalStorageDebugInfo(allCompletedRounds);
 
     return {
       history: allCompletedRounds
@@ -162,6 +149,17 @@ export function MentalCaddie() {
 
     setIsLoading(true);
     setResponse(null);
+    setFailedQuestion(null);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, CADDIE_TIMEOUT_MS);
+    const fail = (errorText: string): AskResult => {
+      setResponse(errorText);
+      if (mode === "text") setFailedQuestion(text);
+      return { ok: false, text: errorText };
+    };
 
     try {
       const res = await fetch("/api/caddie", {
@@ -178,12 +176,16 @@ export function MentalCaddie() {
         signal: controller.signal,
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
 
-      if (!res.ok || typeof data.response !== "string") {
-        const errorText = res.status === 503 ? t.caddie.busy : t.caddie.unavailable;
-        setResponse(errorText);
-        return { ok: false, text: errorText };
+      if (!res.ok || !data || typeof data.response !== "string") {
+        return fail(
+          res.status === 429
+            ? t.caddie.rateLimited
+            : res.status === 503
+              ? t.caddie.busy
+              : t.caddie.unavailable,
+        );
       }
 
       setResponse(data.response);
@@ -195,11 +197,12 @@ export function MentalCaddie() {
       });
       return { ok: true, text: data.response };
     } catch {
+      if (timedOut) return fail(t.caddie.timeout);
       // Aborted (Stop / panel closed) — stay quiet.
       if (controller.signal.aborted) return { ok: false, text: "" };
-      setResponse(t.caddie.unavailable);
-      return { ok: false, text: t.caddie.unavailable };
+      return fail(t.caddie.unavailable);
     } finally {
+      clearTimeout(timer);
       if (fetchAbortRef.current === controller) {
         fetchAbortRef.current = null;
         setIsLoading(false);
@@ -357,7 +360,7 @@ export function MentalCaddie() {
                   aria-pressed={view === "history"}
                   title={view === "history" ? t.caddie.backToAsk : t.caddie.history}
                   aria-label={view === "history" ? t.caddie.backToAsk : t.caddie.history}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-sage-soft hover:text-foreground"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors hover:bg-sage-soft hover:text-foreground"
                 >
                   <HistoryIcon className="h-4 w-4" />
                 </button>
@@ -365,7 +368,7 @@ export function MentalCaddie() {
                   type="button"
                   onClick={closeCaddie}
                   aria-label={t.common.close}
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-sage-soft hover:text-foreground"
+                  className="flex h-11 w-11 items-center justify-center rounded-full text-muted transition-colors hover:bg-sage-soft hover:text-foreground"
                 >
                   ×
                 </button>
@@ -455,12 +458,21 @@ export function MentalCaddie() {
                     <p className="mt-4 text-center text-xs text-muted">{t.caddie.orType}</p>
 
                     <div className="relative mt-2">
-                      <input
-                        type="text"
+                      <textarea
                         value={message}
+                        rows={2}
+                        maxLength={MAX_MESSAGE_CHARS}
+                        aria-label={t.caddie.placeholder}
                         onChange={(event) => setMessage(event.target.value)}
+                        onKeyDown={(event) => {
+                          // Enter sends; Shift+Enter adds a line. Never send mid-IME composition (e.g. Chinese input).
+                          if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                            event.preventDefault();
+                            void handleAsk();
+                          }
+                        }}
                         placeholder={t.caddie.placeholder}
-                        className="w-full rounded-2xl border border-border bg-background px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
+                        className="block w-full resize-none rounded-2xl border border-border bg-background px-4 py-3 pr-16 text-base text-foreground placeholder:text-muted focus:border-forest focus:outline-none sm:text-sm"
                       />
                       {dictation.supported && (
                         <button
@@ -469,7 +481,7 @@ export function MentalCaddie() {
                           aria-pressed={dictation.isListening}
                           title={dictation.isListening ? t.voice.stopListening : t.caddie.speakToCaddie}
                           aria-label={dictation.isListening ? t.voice.stopListening : t.caddie.speakToCaddie}
-                          className={`absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border transition-colors ${
+                          className={`absolute right-2 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border transition-colors ${
                             dictation.isListening
                               ? "border-forest bg-forest text-foreground"
                               : "border-border bg-surface text-muted hover:border-forest"
@@ -483,6 +495,7 @@ export function MentalCaddie() {
                       )}
                     </div>
 
+                    <p className="mt-1.5 hidden text-[11px] text-muted sm:block">{t.caddie.enterHint}</p>
                     {dictation.supported && dictation.isListening && (
                       <p className="mt-1.5 text-xs text-sage">{t.voice.listening}</p>
                     )}
@@ -508,9 +521,18 @@ export function MentalCaddie() {
                 )}
 
                 {response && (
-                  <p className="motion-fade mt-4 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground">
-                    {response}
-                  </p>
+                  <div className="motion-fade mt-4 rounded-2xl border border-border bg-background px-4 py-3 text-sm text-foreground">
+                    <p className="whitespace-pre-line">{response}</p>
+                    {failedQuestion && !isLoading && (
+                      <button
+                        type="button"
+                        onClick={() => void askCaddie(failedQuestion, "text")}
+                        className="mt-2 inline-flex min-h-11 items-center rounded-full border border-border bg-surface px-4 text-xs font-semibold text-foreground transition-colors hover:border-forest"
+                      >
+                        {t.caddie.tryAgain}
+                      </button>
+                    )}
+                  </div>
                 )}
               </>
             )}

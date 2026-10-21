@@ -1,3 +1,5 @@
+> **Note:** This is the Sprint 1 prompt log. The app was called **ForeCalm** at the time; it has since been renamed **Fore!Mind**. The Sprint 2 build prompts are in [`PROMPTS.md`](../PROMPTS.md).
+
 # Prompt Log
 
 ## Prompt 1 — Foundation and Home Experience

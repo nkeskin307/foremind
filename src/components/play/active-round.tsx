@@ -12,6 +12,7 @@ import {
   type RoundData,
 } from "@/lib/play/round-data";
 import { FlagIcon } from "@/components/icons/flag-icon";
+import { ModalPortal } from "@/components/layout/modal-portal";
 import { useCaddieContext, type CaddieRoundMoment } from "@/lib/caddie/caddie-context";
 import {
   createActiveRoundId,
@@ -460,7 +461,7 @@ export function ActiveRound({
       </div>
 
       <div className="motion-body">
-      <div className="mt-6 grid grid-cols-9 gap-1.5">
+      <div className="mt-6 grid grid-cols-6 gap-2 sm:grid-cols-9 sm:gap-1.5">
         {Array.from({ length: totalHoles }, (_, index) => {
           const isCurrent = index === currentHole;
           const holeScore = scores[index];
@@ -490,48 +491,6 @@ export function ActiveRound({
         {t.play.shadedHint}
       </p>
 
-      {activeCard && (
-        <div
-          role="status"
-          className="motion-fade mt-6 rounded-2xl border border-forest bg-sage-soft px-4 py-4"
-        >
-          <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage">
-            <FlagIcon className="h-3.5 w-3.5" />
-            {cardLabels.title}
-          </p>
-          <p className="mt-1.5 text-xs text-muted">{describeWhy(activeCard, t)}</p>
-          <p className="mt-2 text-sm text-foreground">
-            {loadingCardId === activeCard.id ? (
-              <span className="animate-pulse text-muted">{cardLabels.loading}</span>
-            ) : (
-              activeCard.message
-            )}
-          </p>
-          <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => handleCardDismiss(activeCard.id)}
-              className="flex-1 rounded-full border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
-            >
-              {cardLabels.reset}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleCardTalk(activeCard.id)}
-              className="flex-1 rounded-full bg-forest px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-forest-light"
-            >
-              {cardLabels.talk}
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => handleStopInterruptions(activeCard.id)}
-            className="mt-3 w-full text-center text-xs text-muted underline underline-offset-2 hover:text-foreground"
-          >
-            {cardLabels.stop}
-          </button>
-        </div>
-      )}
 
       <div className="mt-8">
         <p className="text-center text-sm font-medium text-foreground">{t.play.par}</p>
@@ -544,7 +503,7 @@ export function ActiveRound({
                 type="button"
                 aria-pressed={isSelected}
                 onClick={() => setPar(par)}
-                className={`flex h-9 w-9 items-center justify-center rounded-full border text-sm font-medium transition-colors ${
+                className={`flex h-11 w-11 items-center justify-center rounded-full border text-sm font-medium transition-colors ${
                   isSelected
                     ? "border-forest bg-forest text-foreground"
                     : "border-border bg-surface text-muted hover:border-forest"
@@ -596,7 +555,7 @@ export function ActiveRound({
             <button
               type="button"
               onClick={clearScore}
-              className="underline underline-offset-2 hover:text-foreground"
+              className="inline-flex min-h-11 items-center underline underline-offset-2 hover:text-foreground"
             >
               {t.play.clear}
             </button>
@@ -608,7 +567,7 @@ export function ActiveRound({
         <button
           type="button"
           onClick={() => setShowMentalCheck(true)}
-          className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground"
+          className="min-h-11 inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground"
         >
           {t.play.howFeeling}
         </button>
@@ -650,7 +609,64 @@ export function ActiveRound({
       </div>
       </div>
 
+      {activeCard && (
+        <ModalPortal>
+        <div
+          className="motion-fade fixed inset-0 z-50 flex items-end justify-center bg-black/60 px-4 pb-6 sm:items-center"
+          onClick={() => setActiveCardId(null)}
+        >
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-card-title"
+          onClick={(event) => event.stopPropagation()}
+          className="motion-modal w-full max-w-sm rounded-2xl border border-forest bg-sage-soft px-5 py-5"
+        >
+          <p
+            id="reset-card-title"
+            className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage"
+          >
+            <FlagIcon className="h-3.5 w-3.5" />
+            {cardLabels.title}
+          </p>
+          <p className="mt-1.5 text-xs text-muted">{describeWhy(activeCard, t)}</p>
+          <p className="mt-2 text-sm text-foreground">
+            {loadingCardId === activeCard.id ? (
+              <span className="animate-pulse text-muted">{cardLabels.loading}</span>
+            ) : (
+              activeCard.message
+            )}
+          </p>
+          <div className="mt-4 flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleCardDismiss(activeCard.id)}
+              className="min-h-11 flex-1 rounded-full border border-border bg-surface px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
+            >
+              {cardLabels.reset}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCardTalk(activeCard.id)}
+              className="min-h-11 flex-1 rounded-full bg-forest px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:bg-forest-light"
+            >
+              {cardLabels.talk}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => handleStopInterruptions(activeCard.id)}
+            className="inline-flex min-h-11 items-center mt-3 w-full text-center text-xs text-muted underline underline-offset-2 hover:text-foreground"
+          >
+            {cardLabels.stop}
+          </button>
+        </div>
+        </div>
+        </ModalPortal>
+      )}
+
       {showUnscoredWarning && (
+        <ModalPortal>
         <div
           className="motion-fade fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6"
           onClick={() => setShowUnscoredWarning(false)}
@@ -688,9 +704,11 @@ export function ActiveRound({
             </button>
           </div>
         </div>
+      </ModalPortal>
       )}
 
       {showMentalCheck && (
+        <ModalPortal>
         <div
           className="motion-fade fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-6"
           onClick={closeMentalCheck}
@@ -736,7 +754,7 @@ export function ActiveRound({
                       key={state}
                       type="button"
                       onClick={() => handleSelectMentalState(state)}
-                      className="rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-forest"
+                      className="min-h-11 rounded-full border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:border-forest"
                     >
                       {stateLabel(t, state)}
                     </button>
@@ -746,7 +764,7 @@ export function ActiveRound({
                 <button
                   type="button"
                   onClick={closeMentalCheck}
-                  className="mt-4 w-full text-center text-xs text-muted hover:text-foreground"
+                  className="mt-2 min-h-11 w-full text-center text-xs text-muted hover:text-foreground"
                 >
                   {t.common.cancel}
                 </button>
@@ -754,6 +772,7 @@ export function ActiveRound({
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

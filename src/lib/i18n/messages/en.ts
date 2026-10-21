@@ -34,6 +34,7 @@ export const en = {
     startOver: "Start Over",
     endSession: "End Session",
     askCaddie: "Ask My Caddie",
+    about: "About & privacy",
     restartTitle: "Restart this round?",
     restartBody:
       "This will discard your current unfinished round and take you back to Play setup. Your completed round history won't be affected.",
@@ -413,6 +414,13 @@ export const en = {
     patternMood: (mood: string, count: number, total: number) =>
       `${mood} showed up again — it was logged in ${count} of your last ${total} rounds.`,
   },
+  about: {
+    title: "About Fore!Mind",
+    whatIs: "Fore!Mind is a mental-game companion for golfers: check in before a round, reset during it, and reflect afterwards.",
+    privacy: "Your rounds, reflections and photos stay on this device, in this browser. There are no accounts and no database.",
+    aiNote: "When you ask the Caddie or save a reflection, that text and your round data are sent to our server and Google's Gemini AI to write the reply. Fore!Mind doesn't store them there.",
+    notMedical: "Fore!Mind is performance coaching for golf. It is not medical or mental-health treatment. If you're struggling, please talk to someone you trust or a professional.",
+  },
   caddieLog: {
     title: "Caddie Log",
     subtitle: "Every conversation you've had with your Mental Caddie.",
@@ -440,6 +448,10 @@ export const en = {
     speakToCaddie: "Speak to your caddie",
     ask: "Ask My Caddie",
     asking: "Asking…",
+    rateLimited: "You're asking a lot at once — wait a few seconds and try again.",
+    timeout: "The Caddie took too long to answer. Check your connection and try again.",
+    tryAgain: "Try again",
+    enterHint: "Enter to send · Shift+Enter for a new line",
     busy: "My Caddie is busy for a moment. Try again in a few seconds.",
     unavailable: "The Mental Caddie couldn't respond right now. Please try again in a moment.",
     noteNoReadAloud: "This browser can't read replies aloud, so the reply is shown below.",

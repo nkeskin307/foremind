@@ -12,7 +12,7 @@ export function LanguageSelect({ className = "" }: { className?: string }) {
       <select
         value={lang}
         onChange={(event) => setLanguage(event.target.value as AppLanguage)}
-        className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-foreground focus:border-forest focus:outline-none"
+        className="min-h-11 rounded-full border border-border bg-surface px-3 text-sm text-foreground focus:border-forest focus:outline-none"
       >
         {APP_LANGUAGES.map((option) => (
           <option key={option.code} value={option.code}>
@@ -43,7 +43,7 @@ export function LanguageMenuItems({ onPick }: { onPick: () => void }) {
             setLanguage(option.code);
             onPick();
           }}
-          className={`flex w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-sage-soft ${
+          className={`flex min-h-11 w-full items-center justify-between px-4 py-2 text-left text-sm transition-colors hover:bg-sage-soft ${
             lang === option.code ? "text-sage" : "text-foreground"
           }`}
         >

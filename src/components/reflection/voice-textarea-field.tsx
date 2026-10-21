@@ -36,7 +36,7 @@ export function VoiceTextareaField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           rows={rows}
-          className="w-full rounded-2xl border border-border bg-surface px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
+          className="w-full rounded-2xl border border-border bg-surface px-4 py-3 pr-16 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
         />
 
         {supported && (
@@ -46,7 +46,7 @@ export function VoiceTextareaField({
             aria-pressed={isListening}
             title={isListening ? t.voice.stopListening : t.voice.speakAnswer}
             aria-label={isListening ? t.voice.stopListening : t.voice.speakAnswer}
-            className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+            className={`absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${
               isListening
                 ? "border-forest bg-forest text-foreground"
                 : "border-border bg-surface text-muted hover:border-forest"

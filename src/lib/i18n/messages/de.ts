@@ -31,6 +31,7 @@ export const de: Messages = {
     startOver: "Neu anfangen",
     endSession: "Sitzung beenden",
     askCaddie: "Caddie fragen",
+    about: "Über & Datenschutz",
     restartTitle: "Diese Runde neu starten?",
     restartBody:
       "Deine unfertige Runde wird verworfen und du kehrst zur Rundenvorbereitung zurück. Deine abgeschlossenen Runden bleiben erhalten.",
@@ -394,6 +395,13 @@ export const de: Messages = {
       `Auf ${course} warst du heute bei ${today}, im Schnitt der ${n} früheren ${n === 1 ? "Runde" : "Runden"} bei ${average}.`,
     patternMood: (mood, count, total) => `${mood} kam wieder vor — notiert in ${count} deiner letzten ${total} Runden.`,
   },
+  about: {
+    title: "Über Fore!Mind",
+    whatIs: "Fore!Mind ist ein Begleiter für das Mentalspiel im Golf: vor der Runde einchecken, währenddessen resetten und danach reflektieren.",
+    privacy: "Deine Runden, Reflexionen und Fotos bleiben auf diesem Gerät, in diesem Browser. Es gibt keine Konten und keine Datenbank.",
+    aiNote: "Wenn du den Caddie fragst oder eine Reflexion speicherst, werden dieser Text und deine Rundendaten an unseren Server und Googles Gemini-KI gesendet, um die Antwort zu schreiben. Fore!Mind speichert sie dort nicht.",
+    notMedical: "Fore!Mind ist Leistungscoaching für Golf, keine medizinische oder psychotherapeutische Behandlung. Wenn es dir nicht gut geht, sprich bitte mit einer Vertrauensperson oder einer Fachkraft.",
+  },
   caddieLog: {
     title: "Caddie-Verlauf",
     subtitle: "Alle Gespräche mit deinem Mental-Caddie.",
@@ -421,6 +429,10 @@ export const de: Messages = {
     speakToCaddie: "Mit deinem Caddie sprechen",
     ask: "Caddie fragen",
     asking: "Frage läuft…",
+    rateLimited: "Viele Fragen auf einmal — warte ein paar Sekunden und versuch es erneut.",
+    timeout: "Der Caddie hat zu lange gebraucht. Prüfe deine Verbindung und versuch es erneut.",
+    tryAgain: "Erneut versuchen",
+    enterHint: "Enter zum Senden · Umschalt+Enter für neue Zeile",
     busy: "Dein Caddie ist gerade beschäftigt. Versuch es in ein paar Sekunden erneut.",
     unavailable: "Der Mental-Caddie konnte gerade nicht antworten. Bitte versuch es gleich noch einmal.",
     noteNoReadAloud: "Dieser Browser kann nicht vorlesen, die Antwort steht unten.",

@@ -46,14 +46,14 @@ export function RoundPhoto({
                 setConfirming(false);
                 void removeRoundPhoto(roundId);
               }}
-              className="font-semibold text-foreground underline underline-offset-2"
+              className="inline-flex min-h-11 items-center font-semibold text-foreground underline underline-offset-2"
             >
               {t.photo.removeYes}
             </button>
             <button
               type="button"
               onClick={() => setConfirming(false)}
-              className="text-muted underline underline-offset-2 hover:text-foreground"
+              className="inline-flex min-h-11 items-center text-muted underline underline-offset-2 hover:text-foreground"
             >
               {t.common.cancel}
             </button>
@@ -62,7 +62,7 @@ export function RoundPhoto({
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
+            className="inline-flex min-h-11 items-center mt-1.5 text-xs text-muted underline underline-offset-2 hover:text-foreground"
           >
             {t.photo.remove}
           </button>

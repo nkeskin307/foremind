@@ -1,6 +1,13 @@
 export const runtime = "nodejs";
 
 import { getLanguageInfo, toAppLanguage } from "@/lib/i18n/languages";
+import {
+  callGemini as callGeminiApi,
+  checkRateLimit,
+  clipText,
+  rateLimitedResponse,
+  readJsonBody,
+} from "@/lib/server/api-safety";
 
 const GEMINI_MODEL = "gemini-3.1-flash-lite";
 
@@ -39,10 +46,22 @@ Keep the full response concise.
 
 Never invent a pattern — only reference history when the golfer's saved data actually supports it. If there is no relevant pattern, skip the historical observation and focus only on the current round.
 
-When a "This course" section is provided, you may refer to it naturally (for example "Last time at this course you…"). If it says there are no previous rounds at this course, never claim or imply the golfer has played it before.`;
+When a "This course" section is provided, you may refer to it naturally (for example "Last time at this course you…"). If it says there are no previous rounds at this course, never claim or imply the golfer has played it before.
 
+Wellbeing: Fore!Mind is performance coaching, not medical or mental-health care. If the golfer's message suggests serious distress — such as hopelessness, wanting to hurt themselves, or feeling unable to cope beyond golf — set golf aside. Respond briefly, warmly and without judgment, encourage them to talk to someone they trust or a professional, and if they might be in danger right now, to contact local emergency services. Don't diagnose, and don't attach golf tips to that reply.`;
+
+// Error codes are translated on the client (t.caddie.*); the English text is a fallback.
 const UNAVAILABLE_MESSAGE = "The Mental Caddie couldn't respond right now.";
 const BUSY_MESSAGE = "My Caddie is busy for a moment. Try again in a few seconds.";
+
+// Request limits (the client enforces the message limit too).
+const MAX_BODY_BYTES = 64 * 1024;
+const MAX_MESSAGE_CHARS = 1000;
+const MAX_TEXT_CHARS = 500;
+const MAX_MOMENTS = 36;
+const RATE_LIMIT = { limit: 20, windowMs: 60_000 };
+// Two attempts + a 1s pause must fit inside the client's 15-second timeout.
+const GEMINI_ATTEMPT_TIMEOUT_MS = 6_500;
 const RETRY_DELAY_MS = 1000;
 const MAX_ATTEMPTS = 2;
 
@@ -194,7 +213,7 @@ function parsePreRoundContext(value: unknown): PreRoundContext | null {
   const focus = toNumberOrNull(raw.focus);
   const energy = toNumberOrNull(raw.energy);
   const confidence = toNumberOrNull(raw.confidence);
-  const note = typeof raw.note === "string" ? raw.note.trim() : "";
+  const note = clipText(raw.note, MAX_TEXT_CHARS);
 
   if (focus === null && energy === null && confidence === null && !note) {
     return null;
@@ -218,7 +237,7 @@ function parseRoundContext(value: unknown): RoundContext | null {
   const currentHoleMentalState =
     typeof raw.currentHoleMentalState === "string" ? raw.currentHoleMentalState : null;
   const moments: RoundMoment[] = Array.isArray(raw.moments)
-    ? raw.moments.flatMap((momentItem): RoundMoment[] => {
+    ? raw.moments.slice(0, MAX_MOMENTS).flatMap((momentItem): RoundMoment[] => {
         if (!momentItem || typeof momentItem !== "object") return [];
         const momentRaw = momentItem as Record<string, unknown>;
         const mentalState =
@@ -367,7 +386,7 @@ function parsePastRounds(value: unknown): PastRound[] {
         : {};
 
     const moments: PastRoundMoment[] = Array.isArray(raw.moments)
-      ? raw.moments.flatMap((momentItem): PastRoundMoment[] => {
+      ? raw.moments.slice(0, MAX_MOMENTS).flatMap((momentItem): PastRoundMoment[] => {
           if (!momentItem || typeof momentItem !== "object") return [];
           const momentRaw = momentItem as Record<string, unknown>;
           const mentalState =
@@ -397,17 +416,11 @@ function parsePastRounds(value: unknown): PastRound[] {
       },
       reflection: {
         whatWorked:
-          typeof reflectionRaw.whatWorked === "string"
-            ? reflectionRaw.whatWorked.trim()
-            : "",
+          clipText(reflectionRaw.whatWorked, MAX_TEXT_CHARS),
         whatGotInHead:
-          typeof reflectionRaw.whatGotInHead === "string"
-            ? reflectionRaw.whatGotInHead.trim()
-            : "",
+          clipText(reflectionRaw.whatGotInHead, MAX_TEXT_CHARS),
         whatToRemember:
-          typeof reflectionRaw.whatToRemember === "string"
-            ? reflectionRaw.whatToRemember.trim()
-            : "",
+          clipText(reflectionRaw.whatToRemember, MAX_TEXT_CHARS),
       },
       date: typeof raw.date === "string" ? raw.date : "",
     });
@@ -490,8 +503,8 @@ function parseCourseHistory(value: unknown): CourseHistory | null {
             states: Array.isArray(r.states)
               ? [...new Set(r.states.filter((s): s is string => typeof s === "string" && !!s))]
               : [],
-            whatToRemember: typeof r.whatToRemember === "string" ? r.whatToRemember.trim() : "",
-            whatGotInHead: typeof r.whatGotInHead === "string" ? r.whatGotInHead.trim() : "",
+            whatToRemember: clipText(r.whatToRemember, MAX_TEXT_CHARS),
+            whatGotInHead: clipText(r.whatGotInHead, MAX_TEXT_CHARS),
           },
         ];
       })
@@ -798,85 +811,25 @@ function buildHistoryBlock(rounds: PastRound[], memory: GolferMemory | null): st
   return `${instructions}\n\n${memorySection}Per-round detail:\n${perRoundLines.join("\n\n")}\n\n`;
 }
 
-// TEMPORARY DEV-ONLY DIAGNOSTIC LOGGING.
-// Reports shape/counts only — never reflection text or the API key.
-// Safe to remove once the past-round history wiring is confirmed working.
-function logCaddieHistoryDebugInfo(pastRounds: PastRound[]): void {
-  if (process.env.NODE_ENV === "production") return;
-
-  const mentalStateCount = pastRounds.reduce(
-    (sum, round) => sum + round.moments.length,
-    0,
-  );
-  const roundsWithReflection = pastRounds.filter(
-    (round) =>
-      Boolean(round.reflection.whatWorked) ||
-      Boolean(round.reflection.whatGotInHead) ||
-      Boolean(round.reflection.whatToRemember),
-  ).length;
-
-  console.log("[caddie] past-round history received:", {
-    pastRoundCount: pastRounds.length,
-    dates: pastRounds.map((round) => formatHistoryDate(round.date)),
-    mentalStateCount,
-    roundsWithReflection: `${roundsWithReflection}/${pastRounds.length}`,
-  });
-}
-
-// TEMPORARY DEV-ONLY DIAGNOSTIC LOGGING (requested to verify Golfer Memory
-// against real saved rounds). Reports structured facts and counts only —
-// never full reflection text and never the API key. Safe to remove once
-// verified.
-function logGolferMemoryDebugInfo(
-  memory: GolferMemory | null,
-  pastRounds: PastRound[],
-): void {
-  if (process.env.NODE_ENV === "production") return;
-
-  if (!memory) {
-    console.log("[caddie] Golfer Memory: no completed rounds received from client.");
-    return;
-  }
-
-  const roundsWithReflection = pastRounds.filter(
-    (round) =>
-      Boolean(round.reflection.whatWorked) ||
-      Boolean(round.reflection.whatGotInHead) ||
-      Boolean(round.reflection.whatToRemember),
-  ).length;
-
-  console.log("[caddie] Golfer Memory generated from real saved rounds:", {
-    completedRoundCount: memory.roundCount,
-    averageFocus: memory.averageFocus,
-    averageEnergy: memory.averageEnergy,
-    averageConfidence: memory.averageConfidence,
-    roundsWithState: memory.roundsWithState,
-    holeLogCounts: memory.holeLogCounts,
-    repeatedMentalStates: memory.mostRepeatedStates,
-    roundsWithReflection: `${roundsWithReflection}/${pastRounds.length}`,
-    repeatedReflectionThemes: {
-      whatWorked: memory.workedThemes.map(({ keyword, count }) => ({ keyword, count })),
-      whatGotInHead: memory.gotInHeadThemes.map(({ keyword, count }) => ({ keyword, count })),
-      whatToRemember: memory.rememberThemes.map(({ keyword, count }) => ({ keyword, count })),
-    },
-  });
-}
-
+/** 503 / UNAVAILABLE and 429 / RESOURCE_EXHAUSTED (Gemini rate limit) are worth one retry. */
 function isServiceUnavailable(status: number, errorBody: string): boolean {
-  return status === 503 || errorBody.includes("UNAVAILABLE");
+  return (
+    status === 503 ||
+    status === 429 ||
+    errorBody.includes("UNAVAILABLE") ||
+    errorBody.includes("RESOURCE_EXHAUSTED")
+  );
 }
 
 function callGemini(apiKey: string, message: string): Promise<Response> {
-  return fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+  return callGeminiApi(
+    GEMINI_MODEL,
+    apiKey,
     {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-        contents: [{ role: "user", parts: [{ text: message }] }],
-      }),
+      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      contents: [{ role: "user", parts: [{ text: message }] }],
     },
+    GEMINI_ATTEMPT_TIMEOUT_MS,
   );
 }
 
@@ -923,12 +876,17 @@ async function fetchGeminiReply(
 }
 
 export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  const limited = checkRateLimit(request, "caddie", RATE_LIMIT.limit, RATE_LIMIT.windowMs);
+  if (!limited.ok) return rateLimitedResponse(limited.retryAfterSeconds, BUSY_MESSAGE);
+
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  if (!read.ok) {
+    return Response.json(
+      { error: "Invalid request body.", code: read.status === 413 ? "too_large" : "invalid" },
+      { status: read.status },
+    );
   }
+  const body = read.body;
 
   const message =
     body && typeof body === "object" && "message" in body
@@ -937,6 +895,9 @@ export async function POST(request: Request) {
 
   if (typeof message !== "string" || !message.trim()) {
     return Response.json({ error: "A message is required." }, { status: 400 });
+  }
+  if (message.length > MAX_MESSAGE_CHARS) {
+    return Response.json({ error: "Message is too long.", code: "too_long" }, { status: 413 });
   }
 
   const rawContext =
@@ -956,9 +917,7 @@ export async function POST(request: Request) {
       ? (body as { history: unknown }).history
       : undefined;
   const pastRounds = parsePastRounds(rawHistory);
-  logCaddieHistoryDebugInfo(pastRounds);
   const golferMemory = buildGolferMemory(pastRounds);
-  logGolferMemoryDebugInfo(golferMemory, pastRounds);
   const historyBlock = buildHistoryBlock(pastRounds, golferMemory);
 
   const rawCourseHistory =
@@ -966,16 +925,6 @@ export async function POST(request: Request) {
       ? (body as { courseHistory: unknown }).courseHistory
       : undefined;
   const courseHistory = parseCourseHistory(rawCourseHistory);
-  // TEMPORARY DEV-ONLY DIAGNOSTIC LOGGING — counts only, no reflection text.
-  if (process.env.NODE_ENV !== "production") {
-    console.log("[caddie] course history:", courseHistory
-      ? {
-          course: courseHistory.course,
-          roundsPlayed: courseHistory.roundsPlayed,
-          stateRoundCounts: courseHistory.stateRoundCounts,
-        }
-      : "none sent (no active round)");
-  }
   const courseBlock = buildCourseBlock(courseHistory);
 
   const rawBody = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
@@ -992,7 +941,7 @@ export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.error("GEMINI_API_KEY is not set.");
-    return Response.json({ error: UNAVAILABLE_MESSAGE }, { status: 500 });
+    return Response.json({ error: UNAVAILABLE_MESSAGE, code: "unavailable" }, { status: 500 });
   }
 
   try {
@@ -1000,7 +949,10 @@ export async function POST(request: Request) {
 
     if (!result.ok) {
       return Response.json(
-        { error: result.busy ? BUSY_MESSAGE : UNAVAILABLE_MESSAGE },
+        {
+          error: result.busy ? BUSY_MESSAGE : UNAVAILABLE_MESSAGE,
+          code: result.busy ? "busy" : "unavailable",
+        },
         { status: result.busy ? 503 : 502 },
       );
     }
@@ -1013,6 +965,6 @@ export async function POST(request: Request) {
     return Response.json({ response: text });
   } catch (error) {
     console.error("Failed to reach Gemini API:", error);
-    return Response.json({ error: UNAVAILABLE_MESSAGE }, { status: 502 });
+    return Response.json({ error: UNAVAILABLE_MESSAGE, code: "unavailable" }, { status: 502 });
   }
 }

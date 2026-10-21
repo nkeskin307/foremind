@@ -46,6 +46,7 @@ function isValidRecord(value: unknown): value is ActiveRoundRecord {
     typeof raw.holes === "number" &&
     Number.isInteger(raw.holes) &&
     raw.holes > 0 &&
+    raw.holes <= 36 &&
     typeof raw.currentHole === "number" &&
     Array.isArray(raw.scores) &&
     Array.isArray(raw.mentalNotes) &&

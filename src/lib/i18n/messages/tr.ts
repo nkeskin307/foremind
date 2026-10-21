@@ -31,6 +31,7 @@ export const tr: Messages = {
     startOver: "Baştan başla",
     endSession: "Oturumu bitir",
     askCaddie: "Caddie'ye sor",
+    about: "Hakkında ve gizlilik",
     restartTitle: "Bu tur yeniden başlatılsın mı?",
     restartBody:
       "Bitmemiş turun silinecek ve oyun kurulumuna döneceksin. Tamamlanmış turların etkilenmez.",
@@ -386,6 +387,13 @@ export const tr: Messages = {
       `${course} sahasında bugün ${today}, önceki ${n} turdaki ortalaman ${average}.`,
     patternMood: (mood, count, total) => `${mood} yine görüldü — son ${total} turunun ${count} tanesinde kaydedildi.`,
   },
+  about: {
+    title: "Fore!Mind hakkında",
+    whatIs: "Fore!Mind golfçüler için bir zihin oyunu yardımcısıdır: turdan önce kendini yokla, tur sırasında sıfırlan, sonra değerlendir.",
+    privacy: "Turların, değerlendirmelerin ve fotoğrafların bu cihazda, bu tarayıcıda kalır. Hesap ya da veritabanı yoktur.",
+    aiNote: "Caddie'ye sorduğunda ya da bir değerlendirme kaydettiğinde, bu metin ve tur verilerin cevabı yazmak için sunucumuza ve Google'ın Gemini yapay zekâsına gönderilir. Fore!Mind bunları orada saklamaz.",
+    notMedical: "Fore!Mind golf için performans koçluğudur. Tıbbi ya da ruh sağlığı tedavisi değildir. Zorlanıyorsan lütfen güvendiğin biriyle ya da bir uzmanla konuş.",
+  },
   caddieLog: {
     title: "Caddie kaydı",
     subtitle: "Zihinsel caddie'nle yaptığın tüm konuşmalar.",
@@ -413,6 +421,10 @@ export const tr: Messages = {
     speakToCaddie: "Caddie'nle konuş",
     ask: "Caddie'ye sor",
     asking: "Soruluyor…",
+    rateLimited: "Kısa sürede çok soru sordun — birkaç saniye bekleyip tekrar dene.",
+    timeout: "Caddie'nin cevabı çok uzun sürdü. Bağlantını kontrol edip tekrar dene.",
+    tryAgain: "Tekrar dene",
+    enterHint: "Göndermek için Enter · Yeni satır için Shift+Enter",
     busy: "Caddie'n şu an meşgul. Birkaç saniye sonra tekrar dene.",
     unavailable: "Zihinsel caddie şu an cevap veremedi. Lütfen birazdan tekrar dene.",
     noteNoReadAloud: "Bu tarayıcı cevapları sesli okuyamıyor, cevap aşağıda.",

@@ -198,7 +198,7 @@ export function PreRoundCheckIn({
                     type="button"
                     aria-pressed={isSelected}
                     onClick={() => setRating(key, value)}
-                    className={`flex h-9 w-9 items-center justify-center rounded-full border text-sm font-medium transition-colors ${
+                    className={`flex h-11 w-11 items-center justify-center rounded-full border text-sm font-medium transition-colors ${
                       isSelected
                         ? "border-forest bg-forest text-foreground"
                         : "border-border bg-surface text-muted hover:border-forest"
@@ -228,7 +228,7 @@ export function PreRoundCheckIn({
             onChange={(event) => setNotes(event.target.value)}
             placeholder={t.checkIn.notePlaceholder}
             rows={4}
-            className="w-full rounded-2xl border border-border bg-surface px-4 py-3 pr-14 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
+            className="w-full rounded-2xl border border-border bg-surface px-4 py-3 pr-16 text-sm text-foreground placeholder:text-muted focus:border-forest focus:outline-none"
           />
 
           {supported && (
@@ -238,7 +238,7 @@ export function PreRoundCheckIn({
               aria-pressed={isListening}
               title={isListening ? t.voice.stopListening : t.checkIn.speakThoughts}
               aria-label={isListening ? t.voice.stopListening : t.checkIn.speakThoughts}
-              className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+              className={`absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${
                 isListening
                   ? "border-forest bg-forest text-foreground"
                   : "border-border bg-surface text-muted hover:border-forest"

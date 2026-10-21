@@ -31,6 +31,7 @@ export const es: Messages = {
     startOver: "Empezar de nuevo",
     endSession: "Terminar sesión",
     askCaddie: "Preguntar al caddie",
+    about: "Acerca de y privacidad",
     restartTitle: "¿Reiniciar esta vuelta?",
     restartBody:
       "Se descartará tu vuelta sin terminar y volverás a la preparación. Tu historial de vueltas terminadas no se verá afectado.",
@@ -390,6 +391,13 @@ export const es: Messages = {
       `En ${course} hoy hiciste ${today} frente a ${average} de media en ${n} vuelta${n === 1 ? "" : "s"} anterior${n === 1 ? "" : "es"}.`,
     patternMood: (mood, count, total) => `${mood} volvió a aparecer — registrado en ${count} de tus últimas ${total} vueltas.`,
   },
+  about: {
+    title: "Acerca de Fore!Mind",
+    whatIs: "Fore!Mind es un compañero del juego mental para golfistas: prepárate antes de la vuelta, reiníciate durante ella y reflexiona después.",
+    privacy: "Tus vueltas, reflexiones y fotos se quedan en este dispositivo, en este navegador. No hay cuentas ni base de datos.",
+    aiNote: "Cuando preguntas al caddie o guardas una reflexión, ese texto y los datos de tu vuelta se envían a nuestro servidor y a la IA Gemini de Google para escribir la respuesta. Fore!Mind no los guarda allí.",
+    notMedical: "Fore!Mind es coaching de rendimiento para el golf, no un tratamiento médico ni de salud mental. Si lo estás pasando mal, habla con alguien de confianza o con un profesional.",
+  },
   caddieLog: {
     title: "Registro del caddie",
     subtitle: "Todas tus conversaciones con tu caddie mental.",
@@ -417,6 +425,10 @@ export const es: Messages = {
     speakToCaddie: "Habla con tu caddie",
     ask: "Preguntar al caddie",
     asking: "Preguntando…",
+    rateLimited: "Muchas preguntas seguidas — espera unos segundos e inténtalo de nuevo.",
+    timeout: "El caddie tardó demasiado en responder. Revisa tu conexión e inténtalo de nuevo.",
+    tryAgain: "Reintentar",
+    enterHint: "Intro para enviar · Mayús+Intro para nueva línea",
     busy: "Tu caddie está ocupado. Inténtalo de nuevo en unos segundos.",
     unavailable: "El caddie mental no pudo responder. Inténtalo de nuevo en un momento.",
     noteNoReadAloud: "Este navegador no puede leer en voz alta, la respuesta está abajo.",

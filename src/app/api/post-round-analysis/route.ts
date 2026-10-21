@@ -13,6 +13,21 @@ import {
   type RecapHistoryRound,
   type RoundRecap,
 } from "@/lib/mental-game/round-recap";
+import {
+  callGemini,
+  checkRateLimit,
+  clipText,
+  rateLimitedResponse,
+  readJsonBody,
+} from "@/lib/server/api-safety";
+
+// Request limits for this route.
+const MAX_BODY_BYTES = 128 * 1024;
+const MAX_HOLES = 36;
+const MAX_TEXT_CHARS = 1000;
+const MAX_INTERVENTIONS = 12;
+const RATE_LIMIT = { limit: 8, windowMs: 60_000 };
+const GEMINI_ATTEMPT_TIMEOUT_MS = 14_000;
 
 // Same model as /api/caddie. Kept as a separate constant (rather than a
 // shared import) so this route stays fully self-contained and never risks
@@ -152,8 +167,14 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** 503 / UNAVAILABLE and 429 / RESOURCE_EXHAUSTED (Gemini rate limit) are worth one retry. */
 function isServiceUnavailable(status: number, errorBody: string): boolean {
-  return status === 503 || errorBody.includes("UNAVAILABLE");
+  return (
+    status === 503 ||
+    status === 429 ||
+    errorBody.includes("UNAVAILABLE") ||
+    errorBody.includes("RESOURCE_EXHAUSTED")
+  );
 }
 
 function toNumberOrNull(value: unknown): number | null {
@@ -171,8 +192,8 @@ function parseRoundForAnalysis(value: unknown): ParsedRound | null {
   // which would shift every later hole's number).
   const holes =
     typeof raw.holes === "number" && Number.isInteger(raw.holes) && raw.holes > 0
-      ? raw.holes
-      : raw.scores.length;
+      ? Math.min(raw.holes, MAX_HOLES)
+      : Math.min(raw.scores.length, MAX_HOLES);
   const rawScores = raw.scores as unknown[];
   const rawPars = Array.isArray(raw.pars) ? (raw.pars as unknown[]) : [];
   const rawNotes = Array.isArray(raw.mentalNotes) ? (raw.mentalNotes as unknown[]) : [];
@@ -214,24 +235,17 @@ function parseRoundForAnalysis(value: unknown): ParsedRound | null {
     total,
     totalPar,
     holesScored,
-    interventions: parseInterventions(raw.interventions),
+    interventions: parseInterventions(raw.interventions).slice(0, MAX_INTERVENTIONS),
     preRound: {
       focus: toNumberOrNull(preRoundRaw.focus),
       energy: toNumberOrNull(preRoundRaw.energy),
       confidence: toNumberOrNull(preRoundRaw.confidence),
-      note: typeof preRoundRaw.note === "string" ? preRoundRaw.note.trim() : "",
+      note: clipText(preRoundRaw.note, MAX_TEXT_CHARS),
     },
     reflection: {
-      whatWorked:
-        typeof reflectionRaw.whatWorked === "string" ? reflectionRaw.whatWorked.trim() : "",
-      whatGotInHead:
-        typeof reflectionRaw.whatGotInHead === "string"
-          ? reflectionRaw.whatGotInHead.trim()
-          : "",
-      whatToRemember:
-        typeof reflectionRaw.whatToRemember === "string"
-          ? reflectionRaw.whatToRemember.trim()
-          : "",
+      whatWorked: clipText(reflectionRaw.whatWorked, MAX_TEXT_CHARS),
+      whatGotInHead: clipText(reflectionRaw.whatGotInHead, MAX_TEXT_CHARS),
+      whatToRemember: clipText(reflectionRaw.whatToRemember, MAX_TEXT_CHARS),
     },
   };
 }
@@ -380,20 +394,18 @@ function parseRecapJson(text: string): AiRecapFields | null {
 }
 
 function callGeminiForAnalysis(apiKey: string, promptText: string): Promise<Response> {
-  return fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+  return callGemini(
+    GEMINI_MODEL,
+    apiKey,
     {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
-        contents: [{ role: "user", parts: [{ text: promptText }] }],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: RESPONSE_SCHEMA,
-        },
-      }),
+      systemInstruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      contents: [{ role: "user", parts: [{ text: promptText }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+      },
     },
+    GEMINI_ATTEMPT_TIMEOUT_MS,
   );
 }
 
@@ -436,12 +448,16 @@ async function fetchGeminiAnalysis(
 }
 
 export async function POST(request: Request) {
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Invalid request body." }, { status: 400 });
+  const limited = checkRateLimit(request, "analysis", RATE_LIMIT.limit, RATE_LIMIT.windowMs);
+  if (!limited.ok) {
+    return rateLimitedResponse(limited.retryAfterSeconds, "Too many requests. Try again shortly.");
   }
+
+  const read = await readJsonBody(request, MAX_BODY_BYTES);
+  if (!read.ok) {
+    return Response.json({ error: "Invalid request body." }, { status: read.status });
+  }
+  const body = read.body;
 
   const rawRound =
     body && typeof body === "object" && "round" in body

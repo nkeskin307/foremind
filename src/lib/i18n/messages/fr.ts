@@ -31,6 +31,7 @@ export const fr: Messages = {
     startOver: "Tout recommencer",
     endSession: "Terminer la session",
     askCaddie: "Demander au caddie",
+    about: "À propos et confidentialité",
     restartTitle: "Recommencer cette partie ?",
     restartBody:
       "Ta partie en cours sera supprimée et tu reviendras à la préparation. Ton historique de parties terminées ne sera pas touché.",
@@ -394,6 +395,13 @@ export const fr: Messages = {
       `À ${course}, tu étais à ${today} aujourd'hui contre ${average} en moyenne sur ${n} partie${n === 1 ? "" : "s"} précédente${n === 1 ? "" : "s"}.`,
     patternMood: (mood, count, total) => `${mood} est revenu — noté dans ${count} de tes ${total} dernières parties.`,
   },
+  about: {
+    title: "À propos de Fore!Mind",
+    whatIs: "Fore!Mind est un compagnon du jeu mental pour les golfeurs : faire le point avant une partie, se remettre à zéro pendant, et faire le bilan après.",
+    privacy: "Tes parties, bilans et photos restent sur cet appareil, dans ce navigateur. Pas de compte, pas de base de données.",
+    aiNote: "Quand tu poses une question au caddie ou enregistres un bilan, ce texte et les données de ta partie sont envoyés à notre serveur et à l'IA Gemini de Google pour rédiger la réponse. Fore!Mind ne les y conserve pas.",
+    notMedical: "Fore!Mind est du coaching de performance pour le golf, pas un traitement médical ni de santé mentale. Si tu traverses une période difficile, parles-en à une personne de confiance ou à un professionnel.",
+  },
   caddieLog: {
     title: "Journal du caddie",
     subtitle: "Toutes tes conversations avec ton caddie mental.",
@@ -421,6 +429,10 @@ export const fr: Messages = {
     speakToCaddie: "Parle à ton caddie",
     ask: "Demander au caddie",
     asking: "Envoi…",
+    rateLimited: "Beaucoup de questions d'un coup — attends quelques secondes et réessaie.",
+    timeout: "Le caddie a mis trop de temps à répondre. Vérifie ta connexion et réessaie.",
+    tryAgain: "Réessayer",
+    enterHint: "Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne",
     busy: "Ton caddie est occupé. Réessaie dans quelques secondes.",
     unavailable: "Le caddie mental n'a pas pu répondre. Réessaie dans un instant.",
     noteNoReadAloud: "Ce navigateur ne peut pas lire à voix haute, la réponse est affichée ci-dessous.",

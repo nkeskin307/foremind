@@ -233,7 +233,7 @@ function ReflectionFormBody({
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-muted underline underline-offset-2 hover:text-foreground"
+                  className="inline-flex min-h-11 items-center text-muted underline underline-offset-2 hover:text-foreground"
                 >
                   {t.photo.changePhoto}
                 </button>
@@ -243,7 +243,7 @@ function ReflectionFormBody({
                     setPickedPhoto(null);
                     setSaved(null);
                   }}
-                  className="text-muted underline underline-offset-2 hover:text-foreground"
+                  className="inline-flex min-h-11 items-center text-muted underline underline-offset-2 hover:text-foreground"
                 >
                   {t.photo.remove}
                 </button>
@@ -259,7 +259,7 @@ function ReflectionFormBody({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="mt-1 text-xs text-muted underline underline-offset-2 hover:text-foreground"
+                className="inline-flex min-h-11 items-center mt-1 text-xs text-muted underline underline-offset-2 hover:text-foreground"
               >
                 {t.photo.changePhoto}
               </button>
@@ -270,7 +270,7 @@ function ReflectionFormBody({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={photoStatus === "processing"}
-                className="inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground disabled:opacity-60"
+                className="min-h-11 inline-flex items-center justify-center rounded-full border border-border bg-surface px-4 py-2 text-xs font-medium text-muted transition-colors hover:border-forest hover:text-foreground disabled:opacity-60"
               >
                 {photoStatus === "processing" ? t.photo.processing : `+ ${t.photo.addPhoto}`}
               </button>

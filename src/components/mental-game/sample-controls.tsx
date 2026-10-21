@@ -54,7 +54,7 @@ export function SampleBanner() {
           setBusy(true);
           void clearSampleData().finally(() => setBusy(false));
         }}
-        className="mt-2 text-xs font-semibold text-foreground underline underline-offset-2 disabled:opacity-60"
+        className="inline-flex min-h-11 items-center mt-2 text-xs font-semibold text-foreground underline underline-offset-2 disabled:opacity-60"
       >
         {t.sample.clear}
       </button>
