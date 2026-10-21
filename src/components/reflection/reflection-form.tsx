@@ -4,13 +4,14 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import Link from "next/link";
 import { VoiceTextareaField } from "@/components/reflection/voice-textarea-field";
 import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
-import type { RoundData } from "@/lib/play/round-data";
 import {
-  createCompletedRoundId,
+  getRoundsSnapshot,
+  parseRoundsSnapshot,
+  subscribeToRounds,
   upsertCompletedRoundReflection,
-  updateCompletedRoundAnalysis,
   type CompletedRound,
 } from "@/lib/mental-game/completed-rounds";
+import { requestPostRoundAnalysis } from "@/lib/mental-game/request-analysis";
 import {
   getReflectionDraftSnapshot,
   parseReflectionDraftSnapshot,
@@ -19,10 +20,10 @@ import {
   type ReflectionDraft,
 } from "@/lib/reflection/reflection-draft-storage";
 import { useI18n } from "@/lib/i18n/use-i18n";
-import { getLanguageSnapshot } from "@/lib/i18n/language-store";
 import { resizePhoto } from "@/lib/photos/resize-photo";
 import { saveRoundPhoto, useRoundPhotoUrl } from "@/lib/photos/photo-store";
 import { RoundPhoto } from "@/components/photos/round-photo";
+import { SampleBadge } from "@/components/mental-game/sample-controls";
 
 const EMPTY_DRAFT: ReflectionDraft = { whatWorked: "", whatGotInHead: "", whatToRemember: "" };
 
@@ -34,34 +35,50 @@ function getServerEmptySnapshot() {
   return "";
 }
 
-// Fire-and-forget: runs after the reflection is saved so the "Round
-// complete." confirmation never waits on the AI call. The route always
-// returns an analysis (falling back to a data-only summary if Gemini
-// fails), so this just persists whatever comes back.
-async function generatePostRoundAnalysis(round: CompletedRound): Promise<void> {
-  try {
-    const res = await fetch("/api/post-round-analysis", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      // The analysis is written in the app language chosen at save time.
-      body: JSON.stringify({ round, language: getLanguageSnapshot() }),
-    });
-    const data = await res.json();
-    if (data && data.analysis) {
-      updateCompletedRoundAnalysis(round.id, data.analysis);
-    }
-  } catch {
-    // Best-effort background analysis — a failed request just means My
-    // Mental Game won't have an analysis for this round yet.
+/**
+ * Loads the completed round by id (the URL only carries ?id=…) and shows a
+ * friendly message with a link to My Mental Game if it can't be found.
+ */
+export function ReflectionForm({ roundId }: { roundId: string | null }) {
+  const { t } = useI18n();
+  // "" on the server / during hydration = still loading.
+  const rawRounds = useSyncExternalStore(subscribeToRounds, getRoundsSnapshot, getServerEmptySnapshot);
+  const round = useMemo(
+    () =>
+      rawRounds && roundId
+        ? (parseRoundsSnapshot(rawRounds).find((item) => item.id === roundId) ?? null)
+        : null,
+    [rawRounds, roundId],
+  );
+
+  if (!rawRounds) return null;
+
+  if (!round) {
+    return (
+      <div className="relative mx-auto w-full max-w-md px-6 py-16 text-center">
+        <h1 className="motion-heading text-2xl font-bold tracking-tight text-foreground">
+          {t.reflection.notFoundTitle}
+        </h1>
+        <p className="motion-body mt-3 text-sm text-muted">{t.reflection.notFoundBody}</p>
+        <Link
+          href="/mental-game"
+          className="motion-body mt-8 inline-flex w-full items-center justify-center rounded-full bg-forest px-6 py-3 text-sm font-semibold text-foreground transition-colors hover:bg-forest-light"
+        >
+          {t.reflection.goToMentalGame}
+        </Link>
+      </div>
+    );
   }
+
+  return <ReflectionFormBody key={round.id} roundData={round} roundId={round.id} />;
 }
 
-export function ReflectionForm({
+function ReflectionFormBody({
   roundData,
   roundId,
 }: {
-  roundData: RoundData;
-  roundId: string | null;
+  roundData: CompletedRound;
+  roundId: string;
 }) {
   const { t } = useI18n();
   // Read the draft after mount (server + hydration render see ""), so the
@@ -137,15 +154,11 @@ export function ReflectionForm({
     // history when "Finish Round" was clicked, so this just fills in its
     // reflection — never a duplicate. Only if that round can't be found
     // (e.g. a hand-edited URL missing the id) does this create one fresh.
-    const completed = upsertCompletedRoundReflection(
-      roundId ?? createCompletedRoundId(),
-      roundData,
-      reflection,
-    );
+    const completed = upsertCompletedRoundReflection(roundId, roundData, reflection);
 
     if (roundId) clearReflectionDraft(roundId);
     setSaved(completed);
-    void generatePostRoundAnalysis(completed);
+    void requestPostRoundAnalysis(completed);
 
     // The round is already saved above; the photo is a best-effort extra.
     if (pickedPhoto) {
@@ -168,6 +181,7 @@ export function ReflectionForm({
       <h1 className="motion-heading text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
         {t.reflection.title}
       </h1>
+      {roundData.sample && <SampleBadge className="mt-2" />}
       <div className="motion-body">
       <p className="mt-2 text-base text-muted">
         {t.reflection.subtitle}

@@ -1,57 +1,85 @@
 export const runtime = "nodejs";
 
-import { getMessages, stateLabel } from "@/lib/i18n";
-import { formatList } from "@/lib/i18n/format";
-import { getLanguageInfo, toAppLanguage, type AppLanguage } from "@/lib/i18n/languages";
+import { getMessages } from "@/lib/i18n";
+import { getLanguageInfo, toAppLanguage } from "@/lib/i18n/languages";
+import { formatToPar } from "@/lib/play/round-data";
+import {
+  MIN_EARLIER_ROUNDS_FOR_PATTERN,
+  RECAP_MAX_WORDS,
+  buildFallbackRecap,
+  computeRecapGlance,
+  enforceRecapLimit,
+  findTurningPoint,
+  type RecapHistoryRound,
+  type RoundRecap,
+} from "@/lib/mental-game/round-recap";
 
 // Same model as /api/caddie. Kept as a separate constant (rather than a
 // shared import) so this route stays fully self-contained and never risks
 // touching the existing Caddie route's behavior.
 const GEMINI_MODEL = "gemini-3.1-flash-lite";
 
-const SYSTEM_INSTRUCTION = `You are the Fore!Mind Post-Round Analyst. You write a short, structured mental-game analysis of a golfer's completed round, using only the pre-round check-in, hole-by-hole scores and mental states, and post-round reflection provided to you.
+const SYSTEM_INSTRUCTION = `You are the Fore!Mind Post-Round Analyst. You write a short "Round Recap" of a golfer's completed round, using only the data provided: pre-round check-in, hole-by-hole scores and logged moods, Pause & reset cards, computed facts, earlier rounds (if any), and the golfer's reflection.
 
-Write exactly four sections:
-1. What Helped
-2. What Got In Your Way
-3. Pattern To Watch
-4. Take Into Your Next Round
+Return JSON with these fields:
+- headline: ONE sentence summarizing this round's mental story.
+- turningPoint: 1–2 sentences explaining WHY the turning-point hole given in COMPUTED FACTS was where the round changed, using the logged moods, scores and any reset card around it. If COMPUTED FACTS says there was no turning point, return "".
+- whatWorked: 1 or 2 short bullets. Each must cite a specific hole number and/or quote the golfer's own reflection words.
+- tryThis: EXACTLY ONE concrete action for the next round, in one sentence, tied to a specific hole, mood or the golfer's own words from this round.
+- patternWatch: one sentence comparing this round with the EARLIER ROUNDS (or the same course) — only if earlier rounds are provided; otherwise return "".
 
 Rules:
-- Keep each section to one to three short sentences.
-- Never claim a mental state caused a score. When connecting a mental state to what happened on the course, use wording like "coincided with", "showed up around", "appeared on", or "was followed by".
-- Never invent data that wasn't provided. If there isn't enough information for a section, say so plainly and briefly instead of making something up.
-- Keep the tone supportive, practical, and golf-specific.
-- Do not give technical swing advice — this is about the mental game only.
-- Write each section as plain text only — no markdown, no asterisks, no bullet points.
-- If Proactive Caddie reset cards are listed, you may mention how the golfer responded and what the next scored hole looked like, but describe it as something that "followed" or "came after" the card — never claim the card caused a result.
+- All fields together must stay under ${RECAP_MAX_WORDS} words.
+- Every sentence must be tied to something specific from this round (a hole, a score, a logged mood, a reset card, or the golfer's own words). Never give generic advice.
+- Use the numbers in COMPUTED FACTS as given; never invent data.
+- Never claim a mood or a reset card caused a score — use wording like "came after", "showed up around", "was followed by".
+- Mental game only: no technical swing advice.
+- Plain text only — no markdown or asterisks.
 - Respond only with the requested JSON structure.`;
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
-    whatHelped: { type: "STRING" },
-    whatGotInYourWay: { type: "STRING" },
-    patternToWatch: { type: "STRING" },
-    takeIntoNextRound: { type: "STRING" },
+    headline: { type: "STRING" },
+    turningPoint: { type: "STRING" },
+    whatWorked: { type: "ARRAY", items: { type: "STRING" }, minItems: 1, maxItems: 2 },
+    tryThis: { type: "STRING" },
+    patternWatch: { type: "STRING" },
   },
-  required: ["whatHelped", "whatGotInYourWay", "patternToWatch", "takeIntoNextRound"],
+  required: ["headline", "turningPoint", "whatWorked", "tryThis", "patternWatch"],
 };
 
 const RETRY_DELAY_MS = 1000;
 const MAX_ATTEMPTS = 2;
 
-type AnalysisFields = {
-  whatHelped: string;
-  whatGotInYourWay: string;
-  patternToWatch: string;
-  takeIntoNextRound: string;
+type AiRecapFields = {
+  headline: string;
+  turningPoint: string;
+  whatWorked: string[];
+  tryThis: string;
+  patternWatch: string;
 };
 
-type AnalysisResult = AnalysisFields & {
-  generatedAt: string;
-  source: "ai" | "fallback";
-};
+const MAX_HISTORY = 10;
+
+function parseHistory(value: unknown): RecapHistoryRound[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, MAX_HISTORY).flatMap((item): RecapHistoryRound[] => {
+    if (!item || typeof item !== "object") return [];
+    const raw = item as Record<string, unknown>;
+    return [
+      {
+        course: typeof raw.course === "string" ? raw.course : "",
+        date: typeof raw.date === "string" ? raw.date : "",
+        toPar: typeof raw.toPar === "number" && Number.isFinite(raw.toPar) ? raw.toPar : null,
+        holesScored: typeof raw.holesScored === "number" ? raw.holesScored : 0,
+        states: Array.isArray(raw.states)
+          ? raw.states.filter((state): state is string => typeof state === "string")
+          : [],
+      },
+    ];
+  });
+}
 
 type ParsedIntervention = {
   hole: number;
@@ -291,73 +319,61 @@ function buildAnalysisPrompt(round: ParsedRound): string {
   return lines.join("\n");
 }
 
-/** Data-only analysis (no AI), written in the app language. */
-function buildFallbackAnalysis(round: ParsedRound, lang: AppLanguage): AnalysisResult {
-  const t = getMessages(lang).analysis;
-  const messages = getMessages(lang);
-  const holesByState = new Map<string, number[]>();
-  round.mentalNotes.forEach((state, index) => {
-    if (state) {
-      const holes = holesByState.get(state) ?? [];
-      holes.push(index + 1);
-      holesByState.set(state, holes);
-    }
-  });
-
-  const whatHelped = round.reflection.whatWorked
-    ? round.reflection.whatWorked
-    : t.fallbackNoWins;
-
-  const whatGotInYourWay = round.reflection.whatGotInHead
-    ? round.reflection.whatGotInHead
-    : holesByState.size > 0
-      ? t.fallbackStatesShowedUp(
-          formatList([...holesByState.keys()].map((state) => stateLabel(messages, state)), lang),
-        )
-      : t.fallbackNothingInWay;
-
-  let patternToWatch = t.fallbackNoPattern;
-  for (const [state, holes] of holesByState) {
-    if (holes.length >= 2) {
-      patternToWatch = t.fallbackStateOnHoles(stateLabel(messages, state), formatList(holes, lang));
-      break;
-    }
+function buildComputedFacts(round: ParsedRound, history: RecapHistoryRound[]): string {
+  const glance = computeRecapGlance(round);
+  const turn = findTurningPoint(round);
+  const lines = ["COMPUTED FACTS (from code — use as given):"];
+  lines.push(
+    `- Score vs par: ${glance.toPar === null ? "no holes scored" : `${formatToPar(glance.toPar)} over ${glance.holesScored} of ${glance.holes} scored holes`}`,
+  );
+  if (glance.bestStretch) {
+    lines.push(
+      `- Best stretch: holes ${glance.bestStretch.first}–${glance.bestStretch.last} (${formatToPar(glance.bestStretch.toPar)})`,
+    );
   }
+  if (glance.toughestHole) {
+    lines.push(`- Toughest hole: hole ${glance.toughestHole.hole} (${formatToPar(glance.toughestHole.toPar)})`);
+  }
+  lines.push(`- Moods logged: ${glance.moodsLogged}; Pause & reset cards: ${glance.resetCards}`);
+  lines.push(
+    turn
+      ? `- Turning point: hole ${turn.hole} — ${turn.kind === "bounce-back" ? "bounce-back" : "slide"} after ${formatToPar(turn.fromToPar)} on hole ${turn.fromHole}; next holes averaged ${turn.afterAverage.toFixed(1)} vs par${turn.afterReset ? `; a Pause & reset card was shown on hole ${turn.fromHole}` : ""}${turn.mood ? `; mood logged around it: ${turn.mood}` : ""}`
+      : "- Turning point: none (no clear change in this round) — return an empty turningPoint.",
+  );
 
-  const takeIntoNextRound = round.reflection.whatToRemember
-    ? round.reflection.whatToRemember
-    : t.fallbackIntention;
-
-  return {
-    whatHelped,
-    whatGotInYourWay,
-    patternToWatch,
-    takeIntoNextRound,
-    generatedAt: new Date().toISOString(),
-    source: "fallback",
-  };
+  lines.push("");
+  if (history.length >= MIN_EARLIER_ROUNDS_FOR_PATTERN) {
+    lines.push(`EARLIER ROUNDS (${history.length}, newest first):`);
+    for (const item of history) {
+      lines.push(
+        `- ${item.date.slice(0, 10)} at ${item.course || "unnamed course"}: ${item.toPar === null ? "not scored" : `${formatToPar(item.toPar)} over ${item.holesScored} holes`}; moods: ${item.states.join(", ") || "none"}`,
+      );
+    }
+  } else {
+    lines.push(
+      `EARLIER ROUNDS: fewer than ${MIN_EARLIER_ROUNDS_FOR_PATTERN} — return an empty patternWatch.`,
+    );
+  }
+  return lines.join("\n");
 }
 
-function parseAnalysisJson(text: string): AnalysisFields | null {
+function parseRecapJson(text: string): AiRecapFields | null {
   try {
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object") return null;
     const raw = parsed as Record<string, unknown>;
-
-    const fields = [
-      "whatHelped",
-      "whatGotInYourWay",
-      "patternToWatch",
-      "takeIntoNextRound",
-    ] as const;
-
-    const result = {} as AnalysisFields;
-    for (const field of fields) {
-      const value = raw[field];
-      if (typeof value !== "string" || !value.trim()) return null;
-      result[field] = value.trim();
-    }
-    return result;
+    const str = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+    const whatWorked = Array.isArray(raw.whatWorked)
+      ? raw.whatWorked.map(str).filter(Boolean).slice(0, 2)
+      : [];
+    const fields: AiRecapFields = {
+      headline: str(raw.headline),
+      turningPoint: str(raw.turningPoint),
+      whatWorked,
+      tryThis: str(raw.tryThis),
+      patternWatch: str(raw.patternWatch),
+    };
+    return fields.headline && fields.tryThis && fields.whatWorked.length > 0 ? fields : null;
   } catch {
     return null;
   }
@@ -384,7 +400,7 @@ function callGeminiForAnalysis(apiKey: string, promptText: string): Promise<Resp
 async function fetchGeminiAnalysis(
   apiKey: string,
   promptText: string,
-): Promise<AnalysisFields | null> {
+): Promise<AiRecapFields | null> {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const geminiResponse = await callGeminiForAnalysis(apiKey, promptText);
 
@@ -393,7 +409,7 @@ async function fetchGeminiAnalysis(
       const reply: unknown = data?.candidates?.[0]?.content?.parts?.[0]?.text;
 
       if (typeof reply === "string" && reply.trim()) {
-        return parseAnalysisJson(reply.trim());
+        return parseRecapJson(reply.trim());
       }
 
       console.error("Gemini analysis returned an empty response:", data);
@@ -438,7 +454,9 @@ export async function POST(request: Request) {
   }
 
   const lang = toAppLanguage((body as { language?: unknown }).language) ?? "en";
-  const fallback = buildFallbackAnalysis(round, lang);
+  // Earlier real rounds (the client never includes sample rounds).
+  const history = parseHistory((body as { history?: unknown }).history);
+  const fallback = buildFallbackRecap(round, history, getMessages(lang), lang);
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -448,21 +466,31 @@ export async function POST(request: Request) {
 
   try {
     const languageName = getLanguageInfo(lang).englishName;
-    // Section keys stay in English (JSON schema); the text is in the golfer's language.
-    const promptText = `${buildAnalysisPrompt(round)}\n\nWrite all four sections in ${languageName}. Use golf terms the way ${languageName}-speaking golfers say them (par, bogey, birdie, double bogey). Translate mental-state names naturally.`;
+    // Field keys stay in English (JSON schema); the text is in the golfer's language.
+    const promptText = `${buildAnalysisPrompt(round)}\n\n${buildComputedFacts(round, history)}\n\nWrite every field in ${languageName}. Use golf terms the way ${languageName}-speaking golfers say them (par, bogey, birdie, double bogey). Translate mood names naturally.`;
     const fields = await fetchGeminiAnalysis(apiKey, promptText);
 
     if (!fields) {
       return Response.json({ analysis: fallback });
     }
 
-    const analysis: AnalysisResult = {
-      ...fields,
+    // The turning-point hole and the pattern-watch rule come from code, not the AI.
+    const turn = findTurningPoint(round);
+    const recap: RoundRecap = enforceRecapLimit({
+      version: 2,
+      headline: fields.headline,
+      turningPoint: turn
+        ? { hole: turn.hole, text: fields.turningPoint || fallback.turningPoint?.text || "" }
+        : null,
+      whatWorked: fields.whatWorked,
+      tryThis: fields.tryThis,
+      patternWatch:
+        history.length >= MIN_EARLIER_ROUNDS_FOR_PATTERN ? fields.patternWatch || null : null,
       generatedAt: new Date().toISOString(),
       source: "ai",
-    };
+    });
 
-    return Response.json({ analysis });
+    return Response.json({ analysis: recap });
   } catch (error) {
     console.error("Failed to reach Gemini API for post-round analysis:", error);
     return Response.json({ analysis: fallback });

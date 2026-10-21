@@ -18,6 +18,7 @@ import { appendCaddieLogEntry, loadCaddieLog } from "@/lib/caddie/caddie-log-sto
 import { loadActiveRound } from "@/lib/play/active-round-storage";
 import {
   loadCompletedRounds,
+  withoutSamples,
   toCaddieHistoryPayload,
   type CaddieHistoryRound,
   type CompletedRound,
@@ -125,7 +126,8 @@ export function MentalCaddie() {
   }>(() => {
     if (!isPanelOpen) return { history: [], courseHistory: null };
 
-    const allCompletedRounds = loadCompletedRounds();
+    // Sample rounds are example data — never sent to the Caddie as real history.
+    const allCompletedRounds = withoutSamples(loadCompletedRounds());
     logCaddieLocalStorageDebugInfo(allCompletedRounds);
 
     return {

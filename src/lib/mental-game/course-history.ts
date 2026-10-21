@@ -35,6 +35,8 @@ export type CourseRoundSummary = {
 
 export type CourseHistory = {
   key: string;
+  /** Sample courses are grouped separately from real ones, even with the same name. */
+  sample: boolean;
   /** Name as the golfer most recently typed it. */
   displayName: string;
   /** Newest first. */
@@ -93,8 +95,9 @@ export function summarizeCourseRound(round: CompletedRound): CourseRoundSummary 
 export function buildCourseHistories(rounds: CompletedRound[]): CourseHistory[] {
   const byKey = new Map<string, CompletedRound[]>();
   for (const round of rounds) {
-    const key = normalizeCourseName(round.course);
-    if (!key) continue;
+    const name = normalizeCourseName(round.course);
+    if (!name) continue;
+    const key = round.sample ? `sample:${name}` : name;
     const list = byKey.get(key) ?? [];
     list.push(round);
     byKey.set(key, list);
@@ -123,6 +126,7 @@ export function buildCourseHistories(rounds: CompletedRound[]): CourseHistory[] 
 
     histories.push({
       key,
+      sample: sorted.some((round) => round.sample),
       displayName: sorted[0].course.trim().replace(/\s+/g, " "),
       rounds: summaries,
       averageToPar,

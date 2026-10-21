@@ -19,7 +19,11 @@ import {
   clearActiveRound,
   type ActiveRoundRecord,
 } from "@/lib/play/active-round-storage";
-import { createCompletedRound, loadCompletedRounds } from "@/lib/mental-game/completed-rounds";
+import {
+  createCompletedRound,
+  loadCompletedRounds,
+  withoutSamples,
+} from "@/lib/mental-game/completed-rounds";
 import type { Intervention } from "@/lib/play/interventions";
 import {
   canIntervene,
@@ -262,7 +266,7 @@ export function ActiveRound({
 
     const pattern =
       hit.trigger === "blow-up" || hit.trigger === "rough-start"
-        ? describeBlowUpPattern(loadCompletedRounds())
+        ? describeBlowUpPattern(withoutSamples(loadCompletedRounds()))
         : null;
 
     void fetchResetMessage({
@@ -429,7 +433,6 @@ export function ActiveRound({
     createCompletedRound(roundId, roundData);
     clearActiveRound();
     const params = new URLSearchParams();
-    params.set("data", JSON.stringify(roundData));
     params.set("id", roundId);
     router.push(`/reflection?${params.toString()}`);
   }

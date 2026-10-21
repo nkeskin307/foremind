@@ -5,7 +5,11 @@ import { ActiveRound } from "@/components/play/active-round";
 import { FlagIcon } from "@/components/icons/flag-icon";
 import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
 import { formatToPar, type PreRoundCheckIn } from "@/lib/play/round-data";
-import { getRoundsSnapshot, parseRoundsSnapshot } from "@/lib/mental-game/completed-rounds";
+import {
+  getRoundsSnapshot,
+  parseRoundsSnapshot,
+  withoutSamples,
+} from "@/lib/mental-game/completed-rounds";
 import {
   buildCourseHistories,
   findCourseHistory,
@@ -153,7 +157,7 @@ export function RoundSetup({ preRound }: { preRound: PreRoundCheckIn }) {
     getServerRoundsSnapshot,
   );
   const courseHistories = useMemo(
-    () => buildCourseHistories(parseRoundsSnapshot(rawRounds)),
+    () => buildCourseHistories(withoutSamples(parseRoundsSnapshot(rawRounds))),
     [rawRounds],
   );
   const matchedHistory = findCourseHistory(courseHistories, course);

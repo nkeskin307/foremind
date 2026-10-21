@@ -228,6 +228,9 @@ export const en = {
     whatWorked: "What worked well mentally today?",
     whatGotInHead: "What got in your head?",
     whatToRemember: "What do you want to remember next round?",
+    notFoundTitle: "We couldn't find that round",
+    notFoundBody: "It may have been removed, or the link is out of date.",
+    goToMentalGame: "Go to My Mental Game →",
     save: "Save Reflection",
     complete: "Round complete.",
     viewMentalGame: "View My Mental Game →",
@@ -309,6 +312,9 @@ export const en = {
     noneLogged: "None logged",
     takeaway: "Takeaway",
     noReflectionSaved: "No reflection saved",
+    reflectNow: "Reflect now",
+    retryAnalysis: "Retry analysis",
+    analysisFailed: "The analysis didn't finish.",
     recoveryTitle: "Recovery after reset",
     recoverySubtitle: "Average next-hole result vs par.",
     afterCard: "After a Caddie reset card",
@@ -330,6 +336,82 @@ export const en = {
     removeYes: "Remove",
     label: "Photo",
     alt: (course: string) => `Photo from your round at ${course}`,
+  },
+  glance: {
+    title: "At a glance",
+    avgVsPar: "Avg vs par",
+    avgVsParNote: "per round · scored holes only",
+    commonStates: "Most common mental states",
+    byState: "Score vs par by mental state",
+    byStateNote: "Average result on scored holes where you logged it",
+    firstHole: "First hole vs the rest",
+    firstHoleOver: "Hole 1 over par",
+    firstHoleGood: "Hole 1 par or better",
+    restPerHole: "rest of round, avg per hole",
+    notYet: "Not yet",
+    unlockAvg: "Score at least one hole in a round to see your average vs par.",
+    unlockStates: "Log how you feel during a round to see which states come up most.",
+    holes: (n: number) => `${n} hole${n === 1 ? "" : "s"}`,
+    rounds: (n: number) => `${n} round${n === 1 ? "" : "s"}`,
+    unlockRounds: (n: number) => `Play ${n} more round${n === 1 ? "" : "s"} to see patterns.`,
+    unlockByState: (min: number) =>
+      `Log a mental state on at least ${min} scored holes to compare scores by state.`,
+    unlockFirstHole: (n: number) =>
+      `Play ${n} more round${n === 1 ? "" : "s"} with hole 1 scored to see how your start shapes the rest.`,
+  },
+  sample: {
+    badge: "SAMPLE",
+    load: "Load sample rounds",
+    loadHint: "See how Fore!Mind looks with 6 example rounds. You can clear them anytime.",
+    clear: "Clear sample data",
+    banner: "Includes sample rounds — example data, not yours. Sample rounds are never sent to the Caddie.",
+    reflections: [
+      { whatWorked: "Slowing my pre-shot routine kept me calm.", whatGotInHead: "Rushing after the bogey on the front nine.", whatToRemember: "Take one slow breath before every tee shot." },
+      { whatWorked: "Picking small targets on approach shots.", whatGotInHead: "Comparing my score with my playing partner.", whatToRemember: "Play my own game, one shot at a time." },
+      { whatWorked: "Laughing off a bad drive instead of stewing on it.", whatGotInHead: "Overthinking my putting stroke.", whatToRemember: "Trust the line and commit to the putt." },
+    ],
+  },
+  recap: {
+    title: "Round Recap",
+    turningPoint: "Turning point",
+    whatWorked: "What worked",
+    tryThis: "Try this next round",
+    patternWatch: "Pattern watch",
+    bestStretch: "Best stretch",
+    toughestHole: "Toughest hole",
+    moodsLogged: "Moods logged",
+    resetCards: "Pause & reset cards",
+    rangeValue: (first: number, last: number, result: string) => `Holes ${first}–${last} (${result})`,
+    holeValue: (hole: number, result: string) => `Hole ${hole} (${result})`,
+    headlineBounce: (from: number, hole: number) =>
+      `Hole ${from} got away from you, then you steadied from hole ${hole}.`,
+    headlineSlide: (hole: number) => `A solid start that slipped from hole ${hole}.`,
+    headlineSteady: (result: string) => `A steady round at ${result} with no big swings.`,
+    headlineSteadyMood: (result: string, mood: string) =>
+      `A round at ${result} where ${mood} came up most.`,
+    headlineNoScores: "No holes were scored, so this recap is based on your moods and reflection.",
+    tpBounce: (hole: number, from: number, fromResult: string) =>
+      `After ${fromResult} on hole ${from}, you bounced back on hole ${hole}.`,
+    tpBounceReset: (hole: number, from: number, fromResult: string) =>
+      `After ${fromResult} on hole ${from} and a Pause & reset card, you bounced back on hole ${hole}.`,
+    tpBounceMood: (hole: number, from: number, fromResult: string, mood: string) =>
+      `After ${fromResult} on hole ${from}, you logged ${mood} and bounced back on hole ${hole}.`,
+    tpSlide: (hole: number, result: string) =>
+      `From hole ${hole} the scores slipped (${result} per hole on the next holes).`,
+    tpSlideMood: (hole: number, result: string, mood: string) =>
+      `From hole ${hole}, with ${mood} logged, the scores slipped (${result} per hole).`,
+    workedStretch: (first: number, last: number, result: string) =>
+      `Holes ${first}–${last} were your best stretch (${result}).`,
+    workedOwnWords: (words: string) => `In your words: “${words}”`,
+    tryMood: (hole: number, mood: string) =>
+      `When ${mood} shows up like it did on hole ${hole}, take one slow breath and pick a small target before you swing.`,
+    tryRemember: (words: string) => `On the first tee next round, say your reminder out loud: “${words}”.`,
+    tryToughest: (hole: number) =>
+      `On a hole like hole ${hole}, slow your pre-shot routine and commit to one small target.`,
+    patternCourse: (course: string, today: string, average: string, n: number) =>
+      `At ${course} you were ${today} today vs ${average} on average over ${n} earlier round${n === 1 ? "" : "s"}.`,
+    patternMood: (mood: string, count: number, total: number) =>
+      `${mood} showed up again — it was logged in ${count} of your last ${total} rounds.`,
   },
   caddieLog: {
     title: "Caddie Log",

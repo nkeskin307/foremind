@@ -1,4 +1,5 @@
 import { normalizeRoundData, summarizeScores, type RoundData } from "@/lib/play/round-data";
+import { normalizeRecap, type RoundRecap } from "@/lib/mental-game/round-recap";
 
 export type ReflectionAnswers = {
   whatWorked: string;
@@ -6,22 +7,37 @@ export type ReflectionAnswers = {
   whatToRemember: string;
 };
 
-export type PostRoundAnalysis = {
-  whatHelped: string;
-  whatGotInYourWay: string;
-  patternToWatch: string;
-  takeIntoNextRound: string;
-  generatedAt: string;
-  source: "ai" | "fallback";
-};
+/** The saved post-round review — now a "Round Recap" (old reviews are migrated on read). */
+export type PostRoundAnalysis = RoundRecap;
 
 export type CompletedRound = RoundData & {
   id: string;
   reflection: ReflectionAnswers;
   analysis?: PostRoundAnalysis;
+  /** Example data from "Load sample rounds" — always badged, never sent to the Caddie. */
+  sample?: boolean;
+  /** When the post-round analysis was last requested / last failed (for "Retry analysis"). */
+  analysisRequestedAt?: string;
+  analysisFailedAt?: string;
 };
 
 const STORAGE_KEY = "foremind:completed-rounds";
+/** Fired on window after every write, so the same tab updates (the storage event only fires in other tabs). */
+export const ROUNDS_CHANGED_EVENT = "foremind:rounds-changed";
+
+export function subscribeToRounds(callback: () => void): () => void {
+  window.addEventListener("storage", callback);
+  window.addEventListener(ROUNDS_CHANGED_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(ROUNDS_CHANGED_EVENT, callback);
+  };
+}
+
+/** Real rounds only — what the Caddie and the Proactive Caddie may learn from. */
+export function withoutSamples(rounds: CompletedRound[]): CompletedRound[] {
+  return rounds.filter((round) => !round.sample);
+}
 
 function generateId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -54,32 +70,89 @@ function normalizeReflection(value: unknown): ReflectionAnswers {
  * par 4 on every hole, old numeric scores are kept, and the total is
  * recomputed from scored holes only.
  */
-function normalizeCompletedRound(value: unknown, index: number): CompletedRound | null {
-  if (!value || typeof value !== "object") return null;
-  const raw = value as Record<string, unknown>;
-  const analysis =
-    raw.analysis && typeof raw.analysis === "object"
-      ? (raw.analysis as PostRoundAnalysis)
-      : undefined;
+function normalizeAnalysis(value: unknown): PostRoundAnalysis | undefined {
+  return normalizeRecap(value);
+}
 
-  return {
-    ...normalizeRoundData(raw),
-    id: typeof raw.id === "string" && raw.id ? raw.id : `legacy-${index}`,
-    reflection: normalizeReflection(raw.reflection),
-    ...(analysis ? { analysis } : {}),
-  };
+/** A stored entry is usable only if its core shape is right; anything else is skipped. */
+function isUsableEntry(raw: Record<string, unknown>): boolean {
+  return (
+    Array.isArray(raw.scores) &&
+    (raw.id === undefined || typeof raw.id === "string") &&
+    (raw.course === undefined || typeof raw.course === "string") &&
+    (raw.holes === undefined || typeof raw.holes === "number")
+  );
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function normalizeCompletedRound(value: unknown, index: number): CompletedRound | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  if (!isUsableEntry(raw)) return null;
+
+  try {
+    const analysis = normalizeAnalysis(raw.analysis);
+    return {
+      ...normalizeRoundData(raw),
+      id: typeof raw.id === "string" && raw.id ? raw.id : `legacy-${index}`,
+      reflection: normalizeReflection(raw.reflection),
+      ...(analysis ? { analysis } : {}),
+      ...(raw.sample === true ? { sample: true } : {}),
+      ...(optionalString(raw.analysisRequestedAt)
+        ? { analysisRequestedAt: raw.analysisRequestedAt as string }
+        : {}),
+      ...(optionalString(raw.analysisFailedAt)
+        ? { analysisFailedAt: raw.analysisFailedAt as string }
+        : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
+let lastWarnedSnapshot = "";
+
+/**
+ * Splits stored entries into usable rounds and badly shaped ones. Bad
+ * entries are skipped (with one console warning) so they can't crash the
+ * dashboard or the Caddie — but kept in storage untouched on later writes.
+ */
+function parseRoundsWithInvalid(raw: string): { rounds: CompletedRound[]; invalid: unknown[] } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return { rounds: [], invalid: [] };
+  }
+  if (!Array.isArray(parsed)) return { rounds: [], invalid: [] };
+
+  const rounds: CompletedRound[] = [];
+  const invalid: unknown[] = [];
+  parsed.forEach((item, index) => {
+    const round = normalizeCompletedRound(item, index);
+    if (round) rounds.push(round);
+    else invalid.push(item);
+  });
+
+  if (invalid.length > 0 && raw !== lastWarnedSnapshot) {
+    lastWarnedSnapshot = raw;
+    console.warn(
+      `[foremind] Skipped ${invalid.length} saved round(s) with an unexpected shape.`,
+      invalid,
+    );
+  }
+  return { rounds, invalid };
 }
 
 export function parseRoundsSnapshot(raw: string): CompletedRound[] {
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item, index) => normalizeCompletedRound(item, index))
-      .filter((round): round is CompletedRound => round !== null);
-  } catch {
-    return [];
-  }
+  return parseRoundsWithInvalid(raw).rounds;
+}
+
+export function findCompletedRound(id: string): CompletedRound | null {
+  return loadCompletedRounds().find((round) => round.id === id) ?? null;
 }
 
 export function loadCompletedRounds(): CompletedRound[] {
@@ -151,10 +224,48 @@ function persistRounds(rounds: CompletedRound[]): void {
   if (typeof window === "undefined") return;
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(rounds));
+    // Keep any skipped (badly shaped) entries as they were rather than deleting them.
+    const { invalid } = parseRoundsWithInvalid(getRoundsSnapshot());
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify([...rounds, ...invalid]));
   } catch {
     // localStorage may be unavailable (private mode, quota) — safe to ignore for this prototype.
   }
+  window.dispatchEvent(new Event(ROUNDS_CHANGED_EVENT));
+}
+
+function updateRound(id: string, change: (round: CompletedRound) => CompletedRound): void {
+  const rounds = loadCompletedRounds();
+  const index = rounds.findIndex((round) => round.id === id);
+  if (index === -1) return;
+  const next = [...rounds];
+  next[index] = change(rounds[index]);
+  persistRounds(next);
+}
+
+export function markAnalysisRequested(id: string): void {
+  updateRound(id, (round) => {
+    const { analysisFailedAt: _failed, ...rest } = round;
+    void _failed;
+    return { ...rest, analysisRequestedAt: new Date().toISOString() };
+  });
+}
+
+export function markAnalysisFailed(id: string): void {
+  updateRound(id, (round) => ({ ...round, analysisFailedAt: new Date().toISOString() }));
+}
+
+/** Adds rounds (used by sample data); skips ids that already exist. */
+export function addCompletedRounds(newRounds: CompletedRound[]): void {
+  const rounds = loadCompletedRounds();
+  const existing = new Set(rounds.map((round) => round.id));
+  persistRounds([...rounds, ...newRounds.filter((round) => !existing.has(round.id))]);
+}
+
+/** Removes every sample round; returns their ids (so photos can be removed too). */
+export function removeSampleRounds(): string[] {
+  const rounds = loadCompletedRounds();
+  persistRounds(rounds.filter((round) => !round.sample));
+  return rounds.filter((round) => round.sample).map((round) => round.id);
 }
 
 const EMPTY_REFLECTION: ReflectionAnswers = {
@@ -224,7 +335,9 @@ export function updateCompletedRoundAnalysis(
   const index = rounds.findIndex((round) => round.id === id);
   if (index === -1) return null;
 
-  const updated: CompletedRound = { ...rounds[index], analysis };
+  const normalized = normalizeRecap(analysis);
+  if (!normalized) return null;
+  const updated: CompletedRound = { ...rounds[index], analysis: normalized };
   const next = [...rounds];
   next[index] = updated;
   persistRounds(next);

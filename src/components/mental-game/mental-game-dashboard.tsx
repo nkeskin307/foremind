@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { ScorecardIcon } from "@/components/icons/scorecard-icon";
 import { SparkleIcon } from "@/components/icons/sparkle-icon";
@@ -10,6 +10,7 @@ import { FlagstickMotif } from "@/components/motifs/flagstick-motif";
 import {
   getRoundsSnapshot,
   parseRoundsSnapshot,
+  subscribeToRounds,
   type CompletedRound,
   type PostRoundAnalysis,
 } from "@/lib/mental-game/completed-rounds";
@@ -33,7 +34,21 @@ import {
 import {
   getCaddieLogSnapshot,
   parseCaddieLogSnapshot,
+  subscribeToCaddieLog,
 } from "@/lib/caddie/caddie-log-storage";
+import {
+  ANALYSIS_STUCK_MS,
+  analysisStatus,
+  requestPostRoundAnalysis,
+} from "@/lib/mental-game/request-analysis";
+import { MIN_ROUNDS_FOR_PATTERNS } from "@/lib/mental-game/insights";
+import { AtAGlance } from "@/components/mental-game/at-a-glance";
+import { RoundRecapView } from "@/components/mental-game/round-recap-view";
+import {
+  LoadSampleButton,
+  SampleBadge,
+  SampleBanner,
+} from "@/components/mental-game/sample-controls";
 
 const RECENT_WINDOW = 5;
 
@@ -61,11 +76,6 @@ const THEME_KEYWORDS = [
   "slow down",
   "routine",
 ];
-
-function subscribeToStorage(callback: () => void) {
-  window.addEventListener("storage", callback);
-  return () => window.removeEventListener("storage", callback);
-}
 
 function getServerRoundsSnapshot() {
   return "[]";
@@ -168,11 +178,11 @@ function buildLearningTakeaways(analyzedRounds: CompletedRound[]): Takeaway[] {
   if (analyzedRounds.length === 1) {
     const analysis = analyzedRounds[0].analysis as PostRoundAnalysis;
     const items: Takeaway[] = [];
-    if (analysis.patternToWatch && hasMeaningfulContent(analysis.patternToWatch)) {
-      items.push({ text: analysis.patternToWatch, recurring: false });
+    if (analysis.patternWatch && hasMeaningfulContent(analysis.patternWatch)) {
+      items.push({ text: analysis.patternWatch, recurring: false });
     }
-    if (analysis.takeIntoNextRound && hasMeaningfulContent(analysis.takeIntoNextRound)) {
-      items.push({ text: analysis.takeIntoNextRound, recurring: false });
+    if (analysis.tryThis && hasMeaningfulContent(analysis.tryThis)) {
+      items.push({ text: analysis.tryThis, recurring: false });
     }
     return items.slice(0, 2);
   }
@@ -180,14 +190,14 @@ function buildLearningTakeaways(analyzedRounds: CompletedRound[]): Takeaway[] {
   const themes = findRepeatedThemes(analyzedRounds, (round) => {
     const analysis = round.analysis;
     if (!analysis) return [];
-    return [analysis.patternToWatch, analysis.whatHelped, analysis.takeIntoNextRound];
+    return [analysis.patternWatch ?? "", ...analysis.whatWorked, analysis.tryThis];
   });
 
   if (themes.length > 0) {
     return themes.slice(0, 3).map((theme) => ({ text: theme.example, recurring: true }));
   }
 
-  const latest = (analyzedRounds[0].analysis as PostRoundAnalysis).takeIntoNextRound;
+  const latest = (analyzedRounds[0].analysis as PostRoundAnalysis).tryThis;
   return latest && hasMeaningfulContent(latest) ? [{ text: latest, recurring: false }] : [];
 }
 
@@ -199,8 +209,9 @@ function buildWhatsHelping(analyzedRounds: CompletedRound[]): Takeaway[] {
 
   if (analyzedRounds.length === 1) {
     const analysis = analyzedRounds[0].analysis as PostRoundAnalysis;
-    if (analysis.whatHelped && hasMeaningfulContent(analysis.whatHelped)) {
-      return [{ text: analysis.whatHelped, recurring: false }];
+    const helped = analysis.whatWorked[0];
+    if (helped && hasMeaningfulContent(helped)) {
+      return [{ text: helped, recurring: false }];
     }
     return [];
   }
@@ -208,14 +219,14 @@ function buildWhatsHelping(analyzedRounds: CompletedRound[]): Takeaway[] {
   const themes = findRepeatedThemes(analyzedRounds, (round) => {
     const analysis = round.analysis;
     if (!analysis) return [];
-    return [analysis.whatHelped];
+    return analysis.whatWorked;
   });
 
   if (themes.length > 0) {
     return themes.slice(0, 3).map((theme) => ({ text: theme.example, recurring: true }));
   }
 
-  const latest = (analyzedRounds[0].analysis as PostRoundAnalysis).whatHelped;
+  const latest = (analyzedRounds[0].analysis as PostRoundAnalysis).whatWorked[0];
   return latest && hasMeaningfulContent(latest) ? [{ text: latest, recurring: false }] : [];
 }
 
@@ -253,7 +264,7 @@ function buildCurrentFocus(
   }
 
   const analyzedRounds = recentRounds.filter((round) => round.analysis);
-  const latestTakeaway = analyzedRounds[0]?.analysis?.takeIntoNextRound;
+  const latestTakeaway = analyzedRounds[0]?.analysis?.tryThis;
   if (latestTakeaway && hasMeaningfulContent(latestTakeaway)) {
     return { headline: t.dashboard.carryThis, detail: latestTakeaway };
   }
@@ -271,15 +282,6 @@ function BaselineStat({ label, value }: { label: string; value: number | string 
         <p className="text-xs text-muted">{t.dashboard.notEnoughData}</p>
       )}
       <p className="mt-1 text-xs text-muted">{label}</p>
-    </div>
-  );
-}
-
-function AnalysisSection({ label, text }: { label: string; text: string }) {
-  return (
-    <div>
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className="mt-1 text-sm text-foreground">{text}</p>
     </div>
   );
 }
@@ -337,7 +339,10 @@ function CourseCard({ history }: { history: CourseHistory }) {
     <div className="card-hover rounded-2xl border border-border bg-surface px-4 py-3">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-sm font-medium text-foreground">{history.displayName}</p>
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+            {history.displayName}
+            {history.sample && <SampleBadge />}
+          </p>
           <p className="mt-1 text-xs text-muted">
             {t.dashboard.roundsPlayedCount(roundCount)}
           </p>
@@ -494,9 +499,23 @@ function RoundCard({
   const { lang, t } = useI18n();
   const commonState = mostCommonStateInRound(round);
   const scoreSummary = summarizeScores(round.scores, round.pars);
-  const hasReflection = Boolean(
-    round.reflection.whatWorked || round.reflection.whatGotInHead || round.reflection.whatToRemember,
-  );
+  // A clock that only ticks when a "preparing" analysis may become stuck.
+  const [now, setNow] = useState(() => Date.now());
+  const [retrying, setRetrying] = useState(false);
+  const status = analysisStatus(round, now);
+
+  useEffect(() => {
+    if (status !== "preparing" || !round.analysisRequestedAt) return;
+    const stuckAt = new Date(round.analysisRequestedAt).getTime() + ANALYSIS_STUCK_MS;
+    const timer = setTimeout(() => setNow(Date.now()), Math.max(0, stuckAt - Date.now()) + 250);
+    return () => clearTimeout(timer);
+  }, [status, round.analysisRequestedAt]);
+
+  function retryAnalysis() {
+    setRetrying(true);
+    setNow(Date.now());
+    void requestPostRoundAnalysis(round).finally(() => setRetrying(false));
+  }
 
   return (
     <div className="card-hover rounded-2xl border border-border bg-surface px-4 py-3">
@@ -515,8 +534,9 @@ function RoundCard({
             className="shrink-0"
           />
           <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">
+          <p className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
             {round.course.trim() || t.dashboard.unnamedCourse}
+            {round.sample && <SampleBadge />}
           </p>
           <p className="mt-1 text-xs text-muted">
             {formatDate(round.date, lang, t.common.unknownDate)} · {t.common.holesCount(round.holes)}
@@ -548,6 +568,15 @@ function RoundCard({
         </div>
       </button>
 
+      {status === "none" && (
+        <Link
+          href={`/reflection?id=${encodeURIComponent(round.id)}`}
+          className="mt-3 inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
+        >
+          {t.dashboard.reflectNow}
+        </Link>
+      )}
+
       {/* Always rendered (not `isExpanded &&`) so the grid-rows transition
           has something to animate between — a CSS-only accordion that
           respects prefers-reduced-motion via the global override. */}
@@ -566,26 +595,19 @@ function RoundCard({
               />
             )}
             {round.analysis ? (
-              <>
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-sage">
-                  <SparkleIcon className="h-3 w-3" />
-                  {t.dashboard.reviewTitle}
-                </div>
-                <AnalysisSection label={t.analysis.whatHelped} text={round.analysis.whatHelped} />
-                <AnalysisSection
-                  label={t.analysis.whatGotInYourWay}
-                  text={round.analysis.whatGotInYourWay}
-                />
-                <AnalysisSection
-                  label={t.analysis.patternToWatch}
-                  text={round.analysis.patternToWatch}
-                />
-                <AnalysisSection
-                  label={t.analysis.takeIntoNextRound}
-                  text={round.analysis.takeIntoNextRound}
-                />
-              </>
-            ) : hasReflection ? (
+              <RoundRecapView round={round} recap={round.analysis} />
+            ) : status === "stuck" && !retrying ? (
+              <div>
+                <p className="text-sm text-muted">{t.dashboard.analysisFailed}</p>
+                <button
+                  type="button"
+                  onClick={retryAnalysis}
+                  className="mt-2 inline-flex items-center justify-center rounded-full border border-border bg-background px-4 py-2 text-xs font-semibold text-foreground transition-colors hover:border-forest"
+                >
+                  {t.dashboard.retryAnalysis}
+                </button>
+              </div>
+            ) : status === "preparing" || retrying ? (
               <p className="text-sm text-muted">{t.dashboard.analysisPreparing}</p>
             ) : (
               <p className="text-sm text-muted">{t.dashboard.noReflectionYet}</p>
@@ -600,14 +622,14 @@ function RoundCard({
 export function MentalGameDashboard() {
   const { lang, t } = useI18n();
   const rawRounds = useSyncExternalStore(
-    subscribeToStorage,
+    subscribeToRounds,
     getRoundsSnapshot,
     getServerRoundsSnapshot,
   );
   const rounds = useMemo(() => parseRoundsSnapshot(rawRounds), [rawRounds]);
 
   const rawCaddieLog = useSyncExternalStore(
-    subscribeToStorage,
+    subscribeToCaddieLog,
     getCaddieLogSnapshot,
     getServerCaddieLogSnapshot,
   );
@@ -644,6 +666,7 @@ export function MentalGameDashboard() {
         >
           {t.dashboard.startRound}
         </Link>
+        <LoadSampleButton className="mt-3" />
         </div>
         </div>
       </div>
@@ -676,6 +699,7 @@ export function MentalGameDashboard() {
   );
 
   const courseHistories = buildCourseHistories(rounds);
+  const hasSamples = rounds.some((round) => round.sample);
   const recoveryStats = computeRecoveryStats(rounds);
 
   const analyzedRounds = recentRounds.filter((round) => round.analysis);
@@ -698,20 +722,33 @@ export function MentalGameDashboard() {
       <p className="motion-body mt-2 text-base text-muted">
         {t.dashboard.subtitle}
       </p>
+      {hasSamples && <SampleBanner />}
 
       {/* Named grid areas so mobile keeps document order (review, then
-          baseline, then recent) while desktop repositions review into a
+          baseline, then recent; "At a glance" comes first on phones) while desktop repositions review into a
           right-hand column that spans both left rows — no need to
           duplicate content or fight `order` utilities for two different
           rearrangements at once. */}
       <div
         className="mt-10 lg:grid lg:items-start lg:gap-x-10"
         style={{
-          gridTemplateColumns: "38% 62%",
-          gridTemplateAreas: '"baseline review" "recent review" "courses review"',
+          // fr/minmax instead of 38% + 62% + gap (which overflowed and clipped the right column).
+          gridTemplateColumns: "minmax(0, 2fr) minmax(0, 3fr)",
+          gridTemplateAreas: '"glance review" "baseline review" "recent review" "courses review"',
         }}
       >
-        <section className="motion-body" style={{ gridArea: "review" }}>
+        <section style={{ gridArea: "glance" }} className="motion-body">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-sage">
+            {t.glance.title}
+            {hasSamples && <SampleBadge />}
+          </h2>
+          <div className="mt-3">
+            <AtAGlance rounds={rounds} />
+            <RecoveryCard stats={recoveryStats} />
+          </div>
+        </section>
+
+        <section className="motion-body mt-10 lg:mt-0" style={{ gridArea: "review" }}>
           <div className="flex items-center gap-2.5">
             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-sage-soft">
               <SparkleIcon className="h-4 w-4 text-sage" />
@@ -719,6 +756,7 @@ export function MentalGameDashboard() {
             <h2 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">
               {t.dashboard.reviewTitle}
             </h2>
+            {hasSamples && <SampleBadge />}
           </div>
           <p className="mt-1.5 text-sm text-muted">
             {t.dashboard.reviewSubtitle}
@@ -769,7 +807,9 @@ export function MentalGameDashboard() {
               ) : null}
               {(!topState || topState.roundCount < 2) && (
                 <p className="text-sm text-muted">
-                  {t.dashboard.noPatterns}
+                  {rounds.length < MIN_ROUNDS_FOR_PATTERNS
+                    ? t.glance.unlockRounds(MIN_ROUNDS_FOR_PATTERNS - rounds.length)
+                    : t.dashboard.noPatterns}
                 </p>
               )}
             </div>
@@ -853,11 +893,12 @@ export function MentalGameDashboard() {
           </div>
         </section>
 
-        <section style={{ gridArea: "baseline" }} className="motion-body mt-10 lg:mt-0">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-sage">
+        <section style={{ gridArea: "baseline" }} className="motion-body mt-8">
+          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-sage">
             {t.dashboard.baseline}
+            {hasSamples && <SampleBadge />}
           </h2>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+          <div className="mt-3 grid grid-cols-3 gap-3">
             <BaselineStat
               label={t.checkIn.focus}
               value={averageFocus !== null ? formatDecimal(averageFocus, lang) : null}
@@ -870,9 +911,7 @@ export function MentalGameDashboard() {
               label={t.checkIn.confidence}
               value={averageConfidence !== null ? formatDecimal(averageConfidence, lang) : null}
             />
-            <BaselineStat label={t.dashboard.roundsPlayed} value={String(rounds.length)} />
           </div>
-          <RecoveryCard stats={recoveryStats} />
         </section>
 
         <section style={{ gridArea: "recent" }} className="motion-body-late mt-8">
@@ -910,6 +949,7 @@ export function MentalGameDashboard() {
           </section>
         )}
       </div>
+      {!hasSamples && <LoadSampleButton className="mx-auto mt-10 max-w-md" />}
       </div>
     </div>
   );

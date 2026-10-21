@@ -15,6 +15,17 @@ export type CaddieLogEntryContext = {
 };
 
 const STORAGE_KEY = "foremind:caddie-history";
+const CADDIE_LOG_CHANGED_EVENT = "foremind:caddie-log-changed";
+
+/** storage event (other tabs) + a same-tab event fired after every write. */
+export function subscribeToCaddieLog(callback: () => void): () => void {
+  window.addEventListener("storage", callback);
+  window.addEventListener(CADDIE_LOG_CHANGED_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(CADDIE_LOG_CHANGED_EVENT, callback);
+  };
+}
 const MAX_ENTRIES = 20;
 
 function generateId(): string {
@@ -83,6 +94,7 @@ export function appendCaddieLogEntry(
     };
     const next = [entry, ...loadCaddieLog()].slice(0, MAX_ENTRIES);
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    window.dispatchEvent(new Event(CADDIE_LOG_CHANGED_EVENT));
   } catch {
     // localStorage may be unavailable (private mode, quota) — safe to ignore for this prototype.
   }
